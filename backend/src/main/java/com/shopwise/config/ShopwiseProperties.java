@@ -32,6 +32,17 @@ public class ShopwiseProperties {
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "http://localhost:4173"));
+
+        /**
+         * Accept a request whose Origin is the same host the browser is already talking to.
+         *
+         * <p>The Docker deployment serves the storefront and the API from one origin, with nginx
+         * proxying {@code /api}. Browsers still attach an Origin header to every mutating request,
+         * so without this the storefront could browse but never sign in or check out - and the
+         * failure would only appear at the deployed hostname, never in the dev server, whose origin
+         * is in the list above. Set to {@code false} to require an explicit allowlist.</p>
+         */
+        private boolean allowSameOrigin = true;
     }
 
     @Getter

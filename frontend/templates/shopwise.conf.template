@@ -1,0 +1,105 @@
+# ---------------------------------------------------------------------------
+# Shopwise frontend — server block
+#
+# Rendered from this template at container start. Two values are substituted:
+#
+#   SHOPWISE_LISTEN_PORT   port nginx listens on inside the container
+#   SHOPWISE_API_UPSTREAM  host:port of the backend API
+#
+# Both have defaults set in the Dockerfile, so the image works unchanged with
+# Compose service names and can be repointed at a different backend without a
+# rebuild.
+# ---------------------------------------------------------------------------
+
+# The backend is a sibling service on the Compose network. nginx resolves this
+# once at startup, which is why the backend declares a healthcheck and the
+# frontend waits for it to pass.
+upstream shopwise_api {
+    server ${SHOPWISE_API_UPSTREAM};
+    keepalive 16;
+}
+
+server {
+    listen ${SHOPWISE_LISTEN_PORT};
+    # Also bind IPv6. Inside a container "localhost" resolves to ::1 before
+    # 127.0.0.1, so an IPv4-only listener is unreachable to anything that
+    # resolves the short name - including a healthcheck. The stock nginx image
+    # does this by default; it only had to be repeated because the default
+    # server block is removed.
+    listen [::]:${SHOPWISE_LISTEN_PORT};
+    server_name _;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Security headers. nginx does not inherit add_header into a location that
+    # declares its own, so the caching locations below repeat these.
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+
+    # --- container healthcheck ----------------------------------------------
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 'ok';
+    }
+
+    # --- static assets ------------------------------------------------------
+    # Vite fingerprints filenames in /assets, so they can be cached forever.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # Product artwork and icons keep stable names, so cache them briefly.
+    location /media/ {
+        expires 7d;
+        add_header Cache-Control "public" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        try_files $uri =404;
+    }
+
+    # The entry document must never be cached, or a deploy would be invisible.
+    location = /index.html {
+        add_header Cache-Control "no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+    }
+
+    # --- API ----------------------------------------------------------------
+    location /api/ {
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    location /actuator/ {
+        # Health probes and metrics. Restrict this if the stack is reachable
+        # from an untrusted network.
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    # API documentation. Useful in a demo, and it is what lets the end-to-end
+    # suite run against this port rather than needing direct backend access.
+    # Remove these three locations in a hardened deployment: they describe the
+    # entire API surface.
+    location /v3/api-docs {
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    location /swagger-ui {
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    location = /swagger-ui.html {
+        include /etc/nginx/snippets/proxy.conf;
+    }
+
+    # --- SPA fallback -------------------------------------------------------
+    # Client-side routes such as /product/aurora-book-air-13 are not files, so
+    # anything unmatched returns the shell and React Router takes over.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

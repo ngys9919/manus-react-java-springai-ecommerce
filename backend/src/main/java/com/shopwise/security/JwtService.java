@@ -4,11 +4,9 @@ import com.shopwise.config.ShopwiseProperties;
 import com.shopwise.domain.AppUser;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Date;
 
@@ -18,9 +16,12 @@ public class JwtService {
     private final SecretKey key;
     private final ShopwiseProperties properties;
 
-    public JwtService(ShopwiseProperties properties) {
+    public JwtService(ShopwiseProperties properties, SigningKey signingKey) {
         this.properties = properties;
-        this.key = Keys.hmacShaKeyFor(properties.getSecurity().getJwtSecret().getBytes(StandardCharsets.UTF_8));
+        // SigningKey validates the configured secret as it is constructed, so an unset or
+        // placeholder key fails here with a message that says what to do - rather than surfacing
+        // later as an opaque "constructor threw exception".
+        this.key = signingKey.key();
     }
 
     public String issue(AppUser user) {

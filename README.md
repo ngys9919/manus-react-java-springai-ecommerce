@@ -227,3 +227,20 @@ Captured from the running stack into `artifacts/screenshots/`:
    domain layer keeps no dependency on view types.
 5. **Degradation is a feature.** Every dependency has a fallback path, and the UI always says which
    mode it is in rather than pretending.
+
+### With Docker (fastest)
+
+Three containers — PostgreSQL, the Spring Boot API and an nginx image serving the storefront — with
+the database migrated and seeded on first boot.
+
+```bash
+cp .env.example .env
+openssl rand -base64 48          # paste into SHOPWISE_JWT_SECRET
+docker compose up -d --build
+```
+
+Open **http://localhost:8080**. Only the frontend publishes a port; the API is reached through the
+nginx reverse proxy. Full details, including TLS, backups and troubleshooting, are in
+[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+### From source

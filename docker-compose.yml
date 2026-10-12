@@ -1,0 +1,110 @@
+# ---------------------------------------------------------------------------
+# Shopwise — PostgreSQL + Spring Boot API + nginx-served storefront
+#
+#   cp .env.example .env      # then set SHOPWISE_JWT_SECRET
+#   docker compose up -d --build
+#   open http://localhost:8080
+#
+# Only the frontend publishes a port. The API is reached through the nginx
+# reverse proxy, which mirrors production and keeps the backend off the host
+# network. See docs/DEPLOYMENT.md for the direct-API and TLS variants.
+# ---------------------------------------------------------------------------
+
+name: shopwise
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL
+  # -------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: shopwise-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${SHOPWISE_DB_NAME:-shopwise}
+      POSTGRES_USER: ${SHOPWISE_DB_USER:-shopwise}
+      POSTGRES_PASSWORD: ${SHOPWISE_DB_PASSWORD:-shopwise}
+      # Deterministic collation, so index ordering cannot drift between hosts.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${SHOPWISE_DB_USER:-shopwise} -d ${SHOPWISE_DB_NAME:-shopwise}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - shopwise
+
+  # -------------------------------------------------------------------------
+  # Spring Boot API + Spring AI assistant
+  # -------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: shopwise/backend:latest
+    container_name: shopwise-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      # --- datasource
+      SHOPWISE_DB_URL: jdbc:postgresql://postgres:5432/${SHOPWISE_DB_NAME:-shopwise}
+      SHOPWISE_DB_USER: ${SHOPWISE_DB_USER:-shopwise}
+      SHOPWISE_DB_PASSWORD: ${SHOPWISE_DB_PASSWORD:-shopwise}
+
+      # --- session signing
+      # Required. The application refuses to start with the development
+      # placeholder once a non-local profile is active, and the Dockerfile sets
+      # SPRING_PROFILES_ACTIVE=prod, so an unset value fails fast and loudly
+      # rather than shipping forgeable sessions.
+      #   generate one with:  openssl rand -base64 48
+      SHOPWISE_JWT_SECRET: "${SHOPWISE_JWT_SECRET:?SHOPWISE_JWT_SECRET is required - generate one with openssl rand -base64 48}"
+
+      # --- model access
+      # Omit the key and the stack still starts: the assistant falls back to
+      # deterministic catalogue answers and says so in the UI.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-not-configured}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      SHOPWISE_AI_MODEL: ${SHOPWISE_AI_MODEL:-gpt-5-mini}
+
+      # --- assistant behaviour
+      SHOPWISE_ASSISTANT_ENABLED: ${SHOPWISE_ASSISTANT_ENABLED:-true}
+
+      # --- runtime
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
+      JAVA_OPTS: ${SHOPWISE_JAVA_OPTS:--XX:MaxRAMPercentage=75 -XX:+ExitOnOutOfMemoryError}
+    expose:
+      - "8080"
+    networks:
+      - shopwise
+
+  # -------------------------------------------------------------------------
+  # Storefront (static bundle + API reverse proxy)
+  # -------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: shopwise/frontend:latest
+    container_name: shopwise-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${SHOPWISE_HTTP_PORT:-8080}:80"
+    networks:
+      - shopwise
+
+volumes:
+  postgres-data:
+    name: shopwise-postgres-data
+
+networks:
+  shopwise:
+    name: shopwise-network
+    driver: bridge

@@ -1,0 +1,24 @@
+# Dependencies and build output are produced inside the image.
+node_modules/
+dist/
+dist-ssr/
+*.tsbuildinfo
+.vite/
+
+# Secrets must never enter a build context.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+
+# Local tooling and editor state
+.idea/
+.vscode/
+*.iml
+*.log
+.git/
+.gitignore
+Dockerfile
+.dockerignore

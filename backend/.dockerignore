@@ -1,0 +1,24 @@
+# Build output is produced inside the image, never copied in.
+target/
+*.jar
+*.war
+
+# Secrets must never enter a build context.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.jks
+credentials.json
+secrets.json
+
+# Local tooling and editor state
+.idea/
+.vscode/
+*.iml
+*.log
+.git/
+.gitignore
+Dockerfile
+.dockerignore
