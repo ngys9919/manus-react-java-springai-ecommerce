@@ -202,6 +202,62 @@ SHOTS = [
     },
     {"name": "16-orders", "goto": "/orders", "fullPage": True, "wait": 1500},
     {"name": "17-mobile-home", "goto": "/", "wait": 1200, "viewport": {"width": 390, "height": 844}},
+
+    # --- recommendations -------------------------------------------------
+    # A brand new visitor: the rail must show a labelled popularity fallback
+    # rather than pretending to know them.
+    {
+        "name": "19-reco-home-cold-start",
+        "goto": "/",
+        "resetStorage": True,
+        "steps": [
+            {"reload": True},
+            {"waitForText": "No browsing history yet"},
+            {"wait": 700},
+        ],
+        "fullPage": True,
+    },
+    # The same shopper after browsing cameras and smart home: the rail should
+    # now be personalised and explain itself.
+    {
+        "name": "20-reco-home-personalised",
+        "steps": [
+            {"goto": "/product/optix-r7-mirrorless"},
+            {"wait": 700},
+            {"goto": "/product/securecam-360"},
+            {"wait": 700},
+            {"goto": "/product/auraglow-smart-bulb-4pack"},
+            {"wait": 700},
+            {"goto": "/"},
+            {"waitForText": "Because you viewed"},
+            {"wait": 800},
+        ],
+        "fullPage": True,
+    },
+    # Product page: behaviour-based rails below the fold.
+    {
+        "name": "21-reco-product-detail",
+        "goto": "/product/aurora-book-pro-14",
+        "steps": [
+            {"waitForText": "Frequently bought together"},
+            {"wait": 900},
+        ],
+        "fullPage": True,
+    },
+    # Basket cross-sell: the rail follows what is in the cart.
+    {
+        "name": "22-reco-cart-cross-sell",
+        "steps": [
+            {"goto": "/product/optix-r7-mirrorless"},
+            {"wait": 700},
+            {"click": "button.btn--primary.btn--lg"},
+            {"wait": 1400},
+            {"goto": "/cart"},
+            {"waitForText": "Complete your order"},
+            {"wait": 900},
+        ],
+        "fullPage": True,
+    },
     {
         "name": "18-mobile-assistant",
         "goto": "/shop",

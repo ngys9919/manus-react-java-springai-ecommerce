@@ -5,7 +5,18 @@ import { StarIcon } from './Icons'
 import { useCart } from '../state/CartContext'
 import { useState } from 'react'
 
-export function ProductCard({ product }: { product: ProductSummary }) {
+interface ProductCardProps {
+  product: ProductSummary
+  /**
+   * Why this product is being shown. Recommendations are only useful if the shopper can see the
+   * reasoning, so a rail passes the server's explanation straight through.
+   */
+  reason?: string
+  /** Fired when the card is activated, used to attribute a click to the rail that produced it. */
+  onActivate?: () => void
+}
+
+export function ProductCard({ product, reason, onActivate }: ProductCardProps) {
   const { add } = useCart()
   const [busy, setBusy] = useState(false)
 
@@ -17,7 +28,12 @@ export function ProductCard({ product }: { product: ProductSummary }) {
 
   return (
     <article className="product-card">
-      <Link to={`/product/${product.slug}`} className="product-card__media" aria-label={product.name}>
+      <Link
+        to={`/product/${product.slug}`}
+        className="product-card__media"
+        aria-label={product.name}
+        onClick={onActivate}
+      >
         <img
           src={product.imageUrl ?? '/media/products/placeholder.svg'}
           alt={product.name}
@@ -38,10 +54,14 @@ export function ProductCard({ product }: { product: ProductSummary }) {
 
       <div className="product-card__body">
         <div className="product-card__brand">{product.brand}</div>
-        <Link to={`/product/${product.slug}`} className="product-card__name">
+        <Link to={`/product/${product.slug}`} className="product-card__name" onClick={onActivate}>
           {product.name}
         </Link>
-        <p className="product-card__desc">{product.shortDescription}</p>
+        {reason ? (
+          <p className="product-card__reason">{reason}</p>
+        ) : (
+          <p className="product-card__desc">{product.shortDescription}</p>
+        )}
 
         <div className="rating">
           <StarIcon className="rating__star" />

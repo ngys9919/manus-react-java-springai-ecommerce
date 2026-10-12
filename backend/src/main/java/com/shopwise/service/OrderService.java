@@ -8,6 +8,7 @@ import com.shopwise.domain.ShopOrder;
 import com.shopwise.exception.ApiException;
 import com.shopwise.repository.CartRepository;
 import com.shopwise.repository.OrderRepository;
+import com.shopwise.recommendation.InteractionRecorder;
 import com.shopwise.repository.ProductRepository;
 import com.shopwise.security.ActorResolver.ActorContext;
 import com.shopwise.web.dto.CheckoutRequest;
@@ -36,15 +37,18 @@ public class OrderService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final CartService cartService;
+    private final InteractionRecorder interactions;
 
     public OrderService(OrderRepository orderRepository,
                         CartRepository cartRepository,
                         ProductRepository productRepository,
-                        CartService cartService) {
+                        CartService cartService,
+                        InteractionRecorder interactions) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
         this.cartService = cartService;
+        this.interactions = interactions;
     }
 
     @Transactional
@@ -110,6 +114,12 @@ public class OrderService {
 
         ShopOrder saved = orderRepository.save(order);
         cartService.markCheckedOut(cart);
+        // The strongest preference signal there is. Recorded per product so that
+        // "frequently bought together" has pairs to work with.
+        interactions.purchase(actor, orderItems.stream()
+                .map(OrderItem::getProductId)
+                .filter(java.util.Objects::nonNull)
+                .toList());
         return toView(saved);
     }
 

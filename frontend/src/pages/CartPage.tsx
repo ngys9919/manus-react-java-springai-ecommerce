@@ -1,9 +1,11 @@
 import { Link } from 'react-router-dom'
+import * as api from '../lib/api'
 import { useCart } from '../state/CartContext'
 import { useAssistant } from '../state/AssistantContext'
 import { money } from '../lib/format'
 import { CartIcon, SparkIcon, TrashIcon, TruckIcon } from '../components/Icons'
 import { EmptyState, ErrorState, LineSkeleton } from '../components/States'
+import { RecommendationRail } from '../components/RecommendationRail'
 
 export function CartPage() {
   const { cart, loading, error, refresh, setQuantity, remove, clear } = useCart()
@@ -210,6 +212,15 @@ export function CartPage() {
           </div>
         </aside>
       </div>
+
+      {/* Keyed on the basket's contents so the suggestions follow it: add a camera and the
+          smart-home accessories appear without a reload. */}
+      <RecommendationRail
+        surface="cart_cross_sell"
+        layout="grid"
+        refreshKey={cart.items.map((item) => item.productId).join(',')}
+        loader={(signal) => api.fetchCartRecommendations(4, signal)}
+      />
     </div>
   )
 }

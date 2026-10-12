@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
-import type { AnalyticsSummary, EscalationView } from '../types'
+import type {
+  AnalyticsSummary,
+  EscalationView,
+  PlacementPerformance,
+  RecommendationModelStatus,
+} from '../types'
 import { dateTime, percent, relativeTime } from '../lib/format'
 import { useAuth } from '../state/AuthContext'
 import { useToast } from '../state/ToastContext'
@@ -16,6 +21,8 @@ export function InsightsPage() {
   const [days, setDays] = useState(14)
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
   const [tickets, setTickets] = useState<EscalationView[]>([])
+  const [model, setModel] = useState<RecommendationModelStatus | null>(null)
+  const [placements, setPlacements] = useState<PlacementPerformance[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [denied, setDenied] = useState(false)
@@ -29,6 +36,14 @@ export function InsightsPage() {
       const [analytics, escalations] = await Promise.all([api.fetchAnalytics(days), api.fetchEscalations()])
       setSummary(analytics)
       setTickets(escalations)
+      // Recommendation health is a separate concern from assistant usage, so a failure here
+      // must not blank the assistant metrics above.
+      const [status, performance] = await Promise.all([
+        api.fetchRecommendationStatus().catch(() => null),
+        api.fetchPlacementPerformance(days).catch(() => [] as PlacementPerformance[]),
+      ])
+      setModel(status)
+      setPlacements(performance)
     } catch (cause) {
       if (cause instanceof ApiError && (cause.status === 401 || cause.status === 403)) {
         setDenied(true)
@@ -365,6 +380,78 @@ export function InsightsPage() {
                 ))
               )}
             </div>
+          </section>
+
+          <section className="section">
+            <div className="section__head">
+              <div>
+                <h2 className="section__title">Recommendation model</h2>
+                <p className="section__subtitle">
+                  What the rails are built from, and whether anyone acts on them.
+                </p>
+              </div>
+            </div>
+
+            {model ? (
+              <div className="stat-grid" style={{ marginBottom: 22 }}>
+                <div className="stat">
+                  <div className="stat__label">Products modelled</div>
+                  <div className="stat__value mono">{model.productsModelled}</div>
+                  <div className="stat__meta">in the catalogue right now</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">With behaviour</div>
+                  <div className="stat__value mono">{model.productsWithBehaviour}</div>
+                  <div className="stat__meta">have at least one interaction</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">Interactions</div>
+                  <div className="stat__value mono">{model.interactions.toLocaleString()}</div>
+                  <div className="stat__meta">views, carts, purchases and beacons</div>
+                </div>
+                <div className="stat">
+                  <div className="stat__label">Model built</div>
+                  <div className="stat__value mono" style={{ fontSize: '1.05rem' }}>
+                    {relativeTime(model.builtAt)}
+                  </div>
+                  <div className="stat__meta">{model.enabled ? 'rails enabled' : 'rails disabled'}</div>
+                </div>
+              </div>
+            ) : (
+              <p className="small muted" style={{ marginBottom: 22 }}>
+                Recommendation model status is unavailable.
+              </p>
+            )}
+
+            {placements.length === 0 ? (
+              <EmptyState
+                title="No rail activity in this window"
+                text="Impressions and clicks appear once shoppers scroll past a recommendation rail."
+              />
+            ) : (
+              <div className="card">
+                <table className="spec-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Placement</th>
+                      <th scope="col">Impressions</th>
+                      <th scope="col">Clicks</th>
+                      <th scope="col">Click-through</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {placements.map((placement) => (
+                      <tr key={placement.surface}>
+                        <th scope="row">{placement.surface}</th>
+                        <td className="mono">{placement.impressions.toLocaleString()}</td>
+                        <td className="mono">{placement.clicks.toLocaleString()}</td>
+                        <td className="mono">{placement.clickThroughRate.toFixed(1)}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         </>
       )}

@@ -363,6 +363,99 @@ ask the shopper to repeat themselves and the queue stays scannable.
 
 ---
 
+## Recommendations
+
+Rails of products derived from real shopper behaviour. Every rail is safe to call anonymously: guests
+get a personalised answer from their own guest token, and a shopper with no history gets a labelled
+popularity fallback rather than an empty list or an error.
+
+Every rail returns the same envelope:
+
+```json
+{
+  "strategy": "also_bought",
+  "title": "Frequently bought together",
+  "subtitle": "Pairs well with Aurora Book Pro 14",
+  "anchor": "Aurora Book Pro 14",
+  "recommendationId": "5f0c1c62-6f4b-4f0a-9d1e-2c2b6f0c9a11",
+  "fallback": false,
+  "note": null,
+  "items": [
+    {
+      "product": { "sku": "SKU-3004", "name": "AirTone Lite", "price": 99.0, "...": "…" },
+      "score": 0.5481,
+      "reason": "55% of buyers also bought this",
+      "strategy": "also_bought"
+    }
+  ]
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `reason` | Why this product is here, written to be shown to the shopper. Never empty. |
+| `strategy` | Which rule produced the rail. Useful for attributing performance per placement. |
+| `recommendationId` | Pass this back with impressions and clicks so the rail's performance can be measured. |
+| `fallback` | `true` when the rail could not use its intended signal and answered with a weaker, honest one. |
+| `note` | Plain-language explanation of a fallback. `null` when there is none. |
+
+`items` may be empty. A rail with nothing to say returns `200` with an empty list and a `note`, not an
+error: a storefront slot that fails loudly is worse than one that quietly does not appear.
+
+### `GET /recommendations/for-you?limit=8`
+
+Personalised to the caller's own browsing, using a two-week half-life so recent interest outweighs
+older interest. Products the shopper already bought are excluded; products they have already viewed
+are down-weighted rather than hidden. Falls back to trending when there is no history.
+
+### `GET /recommendations/trending?limit=8`
+
+Time-decayed popularity. The cold-start answer, and the fallback for `for-you`.
+
+### `GET /recommendations/cart?limit=4`
+
+What goes with what is already in the basket. Excludes the basket's own contents. Prefers proven
+co-purchase, and falls back to same-category similarity when nothing is proven yet.
+
+### `GET /recommendations/products/{slugOrSku}/similar?limit=4`
+
+Comparable alternatives. Same-category products are preferred; a different-category product is
+discounted but not banned, so it can still surface when the behavioural evidence is much stronger.
+
+### `GET /recommendations/products/{slugOrSku}/also-viewed?limit=4`
+
+Browsing co-occurrence. Falls back to `similar` when too few shoppers have browsed the pair together.
+
+### `GET /recommendations/products/{slugOrSku}/also-bought?limit=4`
+
+Purchase co-occurrence, reported as the share of buyers who took both. Returns an empty rail until
+there is real evidence, because "frequently bought together" is a claim that should not be invented.
+The `reason` field carries the percentage.
+
+### `POST /recommendations/events`
+
+Records what the browser actually showed and clicked.
+
+```json
+{
+  "events": [
+    { "type": "RECO_IMPRESSION", "productId": 1, "recommendationId": "5f0c…", "surface": "home_for_you" },
+    { "type": "RECO_CLICK",      "productId": 1, "recommendationId": "5f0c…", "surface": "home_for_you" }
+  ]
+}
+```
+
+Returns `{"recorded": 2, "rejected": 0}`.
+
+**Only measurement events are accepted.** `PURCHASE`, `CART_ADD`, `VIEW` and `WISHLIST` are written
+server-side by the services that handle them, so a crafted request cannot inflate the behavioural
+signal that drives everyone else's recommendations. A rejected event is counted, not an error.
+Unknown product ids and unrecognised types are also rejected.
+
+### `GET /recommendations/status` · `GET /recommendations/performance?days=14`
+
+Staff only (`SUPPORT` or `ADMIN`). Model size and freshness, and click-through per placement surface.
+
 ## Insights (staff)
 
 Requires `SUPPORT` or `ADMIN`; a `CUSTOMER` token gets `403`.

@@ -2,13 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import * as api from '../lib/api'
 import { ApiError } from '../lib/api'
-import type { ProductDetail, ProductSummary } from '../types'
+import type { ProductDetail } from '../types'
 import { money, stockLabel } from '../lib/format'
 import { useCart } from '../state/CartContext'
 import { useAssistant } from '../state/AssistantContext'
 import { CheckIcon, SparkIcon, StarIcon, TruckIcon } from '../components/Icons'
 import { ErrorState, LineSkeleton } from '../components/States'
-import { ProductCard } from '../components/ProductCard'
+import { RecommendationRail } from '../components/RecommendationRail'
 
 export function ProductDetailPage() {
   const { slug = '' } = useParams()
@@ -16,7 +16,6 @@ export function ProductDetailPage() {
   const { send, setOpen } = useAssistant()
 
   const [product, setProduct] = useState<ProductDetail | null>(null)
-  const [related, setRelated] = useState<ProductSummary[]>([])
   const [quantity, setQuantity] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -33,13 +32,8 @@ export function ProductDetailPage() {
 
     api
       .fetchProduct(slug, controller.signal)
-      .then(async (detail) => {
+      .then((detail) => {
         setProduct(detail)
-        const siblings = await api.fetchProducts(
-          { category: detail.categorySlug, size: 5, sort: 'rating' },
-          controller.signal,
-        )
-        setRelated(siblings.items.filter((item) => item.sku !== detail.sku).slice(0, 4))
       })
       .catch((cause) => {
         if (controller.signal.aborted) return
@@ -263,20 +257,19 @@ export function ProductDetailPage() {
         </section>
       ) : null}
 
-      {related.length > 0 ? (
-        <section className="section">
-          <div className="section__head">
-            <div>
-              <h2 className="section__title">More in {product.categoryName}</h2>
-            </div>
-          </div>
-          <div className="product-grid">
-            {related.map((item) => (
-              <ProductCard product={item} key={item.sku} />
-            ))}
-          </div>
-        </section>
-      ) : null}
+      {/* Two different questions, so two rails. "Bought together" is a claim about behaviour and
+          stays hidden until there is real evidence for it; "similar" always has an answer because
+          it can fall back to attributes. A third "also viewed" rail was dropped because with this
+          catalogue it repeated the first one almost item for item. */}
+      <RecommendationRail
+        surface="product_also_bought"
+        loader={(signal) => api.fetchAlsoBought(slug, 4, signal)}
+      />
+
+      <RecommendationRail
+        surface="product_similar"
+        loader={(signal) => api.fetchSimilar(slug, 4, signal)}
+      />
     </div>
   )
 }

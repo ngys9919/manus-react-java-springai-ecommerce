@@ -2295,3 +2295,107 @@ p {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ------------------------------------------------------------------ *
+ * Recommendation rails
+ *
+ * Rails scroll horizontally on wide screens so a placement never pushes
+ * the rest of the page down, and collapse to a plain stack on narrow ones
+ * where horizontal scrolling fights the page gesture.
+ * ------------------------------------------------------------------ */
+.reco {
+  margin: 40px 0;
+}
+.reco__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+.reco__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 1.15rem;
+}
+.reco__title svg {
+  color: var(--brand-strong);
+}
+.reco__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.87rem;
+  color: var(--ink-3);
+}
+.reco__note {
+  margin: 0 0 14px;
+  padding: 9px 13px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  font-size: 0.84rem;
+  color: var(--ink-2);
+}
+.reco__track {
+  display: grid;
+  gap: 16px;
+}
+.reco__track--rail {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(232px, 1fr);
+  grid-template-rows: 1fr;
+  overflow-x: auto;
+  padding-bottom: 10px;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.reco__track--grid {
+  grid-template-columns: repeat(auto-fill, minmax(232px, 1fr));
+}
+.reco__item {
+  scroll-snap-align: start;
+  min-width: 0;
+}
+.reco__item .product-card {
+  height: 100%;
+}
+.reco__skeleton {
+  min-width: 232px;
+}
+.reco__empty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 16px 18px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--ink-3);
+  font-size: 0.88rem;
+}
+/* The reason is the point of a recommendation, so it gets the description slot
+   and a colour that separates it from ordinary copy. */
+.product-card__reason {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--brand-strong);
+  background: var(--brand-soft);
+  border-radius: var(--radius-sm);
+  padding: 6px 9px;
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+@media (max-width: 760px) {
+  .reco__track--rail {
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    overflow-x: visible;
+  }
+  .reco__head {
+    flex-direction: column;
+    gap: 8px;
+  }
+}

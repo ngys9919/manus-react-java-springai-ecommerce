@@ -8,12 +8,15 @@ import com.shopwise.service.CartService;
 import com.shopwise.service.CatalogService;
 import com.shopwise.service.ConversationService;
 import com.shopwise.service.EscalationService;
+import com.shopwise.recommendation.RecommendationService;
 import com.shopwise.service.OrderService;
 import com.shopwise.web.dto.CartView;
 import com.shopwise.web.dto.ChatBlock;
 import com.shopwise.web.dto.OrderView;
 import com.shopwise.web.dto.ProductDetail;
 import com.shopwise.web.dto.ProductSummary;
+import com.shopwise.web.dto.RecommendationDtos.RecommendationRail;
+import com.shopwise.web.dto.RecommendationDtos.RecommendedProduct;
 import com.shopwise.web.dto.QuickReply;
 import com.shopwise.web.dto.SupportDtos.EscalationView;
 import org.springframework.ai.chat.model.ToolContext;
@@ -50,6 +53,7 @@ public class ShoppingAssistantTools {
     private final OrderService orderService;
     private final EscalationService escalationService;
     private final ConversationService conversationService;
+    private final RecommendationService recommendationService;
     private final ShopwiseProperties properties;
 
     public ShoppingAssistantTools(CatalogService catalogService,
@@ -57,12 +61,14 @@ public class ShoppingAssistantTools {
                                   OrderService orderService,
                                   EscalationService escalationService,
                                   ConversationService conversationService,
+                                  RecommendationService recommendationService,
                                   ShopwiseProperties properties) {
         this.catalogService = catalogService;
         this.cartService = cartService;
         this.orderService = orderService;
         this.escalationService = escalationService;
         this.conversationService = conversationService;
+        this.recommendationService = recommendationService;
         this.properties = properties;
     }
 
@@ -119,6 +125,98 @@ public class ShoppingAssistantTools {
                         .toList()));
 
         return Map.of("results", products, "count", products.size());
+    }
+
+    @Tool(name = "recommend_products",
+            description = """
+                    Recommend products from real shopper behaviour rather than guesswork. Use this when the
+                    shopper asks what else to consider, what is like something, what other people buy, or
+                    what goes with an item. Each result comes with the reason it was chosen, which you should
+                    pass on. Modes:
+                      similar      - products comparable to a given one; needs sku
+                      also_bought  - what buyers actually bought together with a given one; needs sku
+                      for_you      - personalised to this shopper's own browsing; no sku needed
+                      trending     - what is popular right now; no sku needed
+                    Prefer this over inventing a suggestion, and never present a product it does not return.""")
+    public Map<String, Object> recommendProducts(
+            @ToolParam(description = "One of: similar, also_bought, for_you, trending")
+            String mode,
+            @ToolParam(description = "Anchor product SKU or slug. Required for similar and also_bought.")
+            String sku,
+            @ToolParam(description = "How many to return, default 4.")
+            Integer limit,
+            ToolContext toolContext) {
+        String requested = mode == null ? "for_you" : mode.trim().toLowerCase();
+        int size = limit == null ? 4 : Math.clamp(limit, 1, 8);
+        ActorContext actor = AssistantToolContext.actor(toolContext);
+
+        RecommendationRail rail;
+        Long anchorId = null;
+        if (requested.equals("similar") || requested.equals("also_bought")) {
+            if (sku == null || sku.isBlank()) {
+                return Map.of(
+                        "results", List.of(),
+                        "message", "Tell me which product to base this on, and I will find the closest matches.");
+            }
+            try {
+                anchorId = catalogService.detail(sku).id();
+            } catch (ApiException ex) {
+                return Map.of(
+                        "results", List.of(),
+                        "message", "I could not find a product called '" + sku + "'. Search for it first.");
+            }
+            rail = requested.equals("similar")
+                    ? recommendationService.similar(anchorId, size)
+                    : recommendationService.alsoBought(anchorId, size);
+        } else if (requested.equals("trending")) {
+            rail = recommendationService.trending(size);
+        } else {
+            rail = recommendationService.forActor(actor, size);
+        }
+
+        note(toolContext, "recommend_products", Map.of(
+                "mode", requested,
+                "anchor", Objects.toString(sku, ""),
+                "results", rail.items().size()));
+
+        if (rail.items().isEmpty()) {
+            return Map.of(
+                    "results", List.of(),
+                    "message", "There is not enough shopping history for that yet. "
+                            + "Ask me to search the catalogue instead.");
+        }
+
+        List<ProductSummary> products = rail.items().stream()
+                .map(RecommendedProduct::product)
+                .toList();
+
+        blocks(toolContext).add(ChatBlock.of(
+                ChatBlock.TYPE_PRODUCT_CARDS,
+                rail.title(),
+                rail.subtitle(),
+                rail.fallback() ? rail.note() : null,
+                Map.of("products", products,
+                        "reasons", rail.items().stream()
+                                .map(item -> Map.of("sku", item.product().sku(), "reason", item.reason()))
+                                .toList()),
+                products.stream()
+                        .limit(3)
+                        .map(product -> QuickReply.send("Compare " + shortName(product),
+                                "Compare " + product.name()))
+                        .toList()));
+
+        return Map.of(
+                "mode", requested,
+                "anchor", anchorId == null ? "" : anchorId,
+                "results", rail.items().stream()
+                        .map(item -> Map.of(
+                                "sku", item.product().sku(),
+                                "name", item.product().name(),
+                                "price", item.product().price(),
+                                "reason", item.reason()))
+                        .toList(),
+                "fallback", rail.fallback(),
+                "note", Objects.toString(rail.note(), ""));
     }
 
     @Tool(name = "get_product_details",

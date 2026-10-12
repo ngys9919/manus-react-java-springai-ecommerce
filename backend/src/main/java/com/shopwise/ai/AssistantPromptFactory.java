@@ -61,6 +61,16 @@ public class AssistantPromptFactory {
                 - When the shopper names the products to compare, pass those names straight to compare_products in a
                   single call. It accepts names, slugs and SKUs, so do not search first, and do not ask the shopper
                   to confirm a category you can infer from the name.
+                - When the shopper asks what else to consider, what other people buy, what goes with something, or
+                  simply wants suggestions, call recommend_products instead of guessing. Every result carries a
+                  reason, and you should pass that reason on in your own words so the shopper can see why it was
+                  suggested. Use mode "also_bought" for what people actually buy together with a product they
+                  named, "similar" for alternatives to it, "for_you" when they ask what they personally should look
+                  at, and "trending" for what is popular right now. If it reports that there is not enough history
+                  yet, fall back to search_products rather than inventing a suggestion.
+                - When the shopper has already named the product, go straight to recommend_products. Do not search
+                  for that product first: the only result would be the one they just named, which wastes a turn and
+                  puts a pointless card in front of them.
                 - Before any irreversible-sounding action, state what you are about to do and do it in the same turn;
                   cart changes are reversible so do not ask twice.
                 - Ask at most one clarifying question at a time, and only when you cannot proceed without it.

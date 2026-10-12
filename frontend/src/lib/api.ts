@@ -11,7 +11,11 @@ import type {
   OrderView,
   ProductDetail,
   ProductPage,
+  PlacementPerformance,
   ProblemDetail,
+  RecommendationEvent,
+  RecommendationModelStatus,
+  RecommendationRail,
   UserView,
 } from '../types'
 
@@ -299,3 +303,71 @@ export function resolveEscalation(reference: string) {
 }
 
 export type { ChatRequestPayload as ChatPayload }
+
+// -------------------------------------------------------- recommendations
+
+export function fetchForYou(limit = 8, signal?: AbortSignal) {
+  return request<RecommendationRail>(`/recommendations/for-you?limit=${limit}`, { signal })
+}
+
+export function fetchTrending(limit = 8, signal?: AbortSignal) {
+  return request<RecommendationRail>(`/recommendations/trending?limit=${limit}`, { signal })
+}
+
+export function fetchCartRecommendations(limit = 4, signal?: AbortSignal) {
+  return request<RecommendationRail>(`/recommendations/cart?limit=${limit}`, { signal })
+}
+
+export function fetchSimilar(slugOrSku: string, limit = 4, signal?: AbortSignal) {
+  return request<RecommendationRail>(
+    `/recommendations/products/${encodeURIComponent(slugOrSku)}/similar?limit=${limit}`,
+    { signal },
+  )
+}
+
+export function fetchAlsoBought(slugOrSku: string, limit = 4, signal?: AbortSignal) {
+  return request<RecommendationRail>(
+    `/recommendations/products/${encodeURIComponent(slugOrSku)}/also-bought?limit=${limit}`,
+    { signal },
+  )
+}
+
+export function fetchAlsoViewed(slugOrSku: string, limit = 4, signal?: AbortSignal) {
+  return request<RecommendationRail>(
+    `/recommendations/products/${encodeURIComponent(slugOrSku)}/also-viewed?limit=${limit}`,
+    { signal },
+  )
+}
+
+export function fetchRecommendationStatus(signal?: AbortSignal) {
+  return request<RecommendationModelStatus>('/recommendations/status', { signal })
+}
+
+export function fetchPlacementPerformance(days = 14, signal?: AbortSignal) {
+  return request<PlacementPerformance[]>(`/recommendations/performance?days=${days}`, { signal })
+}
+
+/**
+ * Reports what the browser actually showed and what was clicked.
+ *
+ * Best-effort by design: a failed beacon must never surface to the shopper or break a render, so
+ * errors are swallowed. The server rejects anything that is not a measurement event, which is why
+ * only impressions and clicks are sent from here.
+ */
+export function trackRecommendationEvents(events: RecommendationEvent[]): void {
+  if (events.length === 0) return
+  try {
+    void fetch(`${API_ROOT}/recommendations/events`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Guest-Token': guestToken(),
+        ...(authToken() ? { Authorization: `Bearer ${authToken()}` } : {}),
+      },
+      body: JSON.stringify({ events }),
+      keepalive: true,
+    }).catch(() => undefined)
+  } catch {
+    // Never let telemetry break the page.
+  }
+}

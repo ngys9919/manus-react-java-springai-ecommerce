@@ -95,6 +95,36 @@ The assistant can mutate state, and the storefront reflects it immediately:
 `ACTION`-kind quick replies let the client perform a UI-side effect and then report back to the
 assistant in the same conversation, keeping the transcript coherent.
 
+## 5a. Recommending, not guessing
+
+The assistant has a `recommend_products` tool backed by the same engine that drives the storefront
+rails, so a conversation and a product page never disagree about what goes with what.
+
+| Mode | Question it answers | Needs |
+| --- | --- | --- |
+| `similar` | What else is like this? | a product |
+| `also_bought` | What do people actually buy with this? | a product |
+| `for_you` | What should I look at? | nothing |
+| `trending` | What is popular right now? | nothing |
+
+Two behaviours matter more than the modes.
+
+**The reason travels with the product.** Every item comes back with a sentence like
+"55% of buyers also bought this", and the prompt tells the model to pass that reason on in its own
+words. A shopper who is told *why* can judge whether to trust the suggestion; a shopper shown a bare
+list cannot.
+
+**The tool refuses to invent.** When there is not enough purchase history to support
+"frequently bought together", it returns nothing and says so, and the model is instructed to fall
+back to `search_products` rather than presenting a guess as a fact. That is the same grounding rule
+that governs prices and stock: if a tool did not return it, the assistant does not say it.
+
+Recommendation questions are answered from behaviour, and when the shopper has already named a
+product the model is told to go straight to `recommend_products` rather than searching for it first.
+If it searches anyway, the reply assembler drops a single-product card block when the same reply also
+offers a richer set, because repeating a product the shopper just named is noise rather than
+information.
+
 ## 6. Moderation and permissions
 
 ### Inbound screening (before the model sees anything)

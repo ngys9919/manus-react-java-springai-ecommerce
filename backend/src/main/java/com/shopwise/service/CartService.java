@@ -6,6 +6,7 @@ import com.shopwise.domain.CartItem;
 import com.shopwise.domain.Product;
 import com.shopwise.exception.ApiException;
 import com.shopwise.repository.CartRepository;
+import com.shopwise.recommendation.InteractionRecorder;
 import com.shopwise.repository.ProductRepository;
 import com.shopwise.security.ActorResolver.ActorContext;
 import com.shopwise.web.dto.CartView;
@@ -26,13 +27,16 @@ public class CartService {
     private final CartRepository cartRepository;
     private final ProductRepository productRepository;
     private final ShopwiseProperties properties;
+    private final InteractionRecorder interactions;
 
     public CartService(CartRepository cartRepository,
                        ProductRepository productRepository,
-                       ShopwiseProperties properties) {
+                       ShopwiseProperties properties,
+                       InteractionRecorder interactions) {
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
         this.properties = properties;
+        this.interactions = interactions;
     }
 
     /**
@@ -98,6 +102,9 @@ public class CartService {
             existing.setUnitPrice(product.getPrice());
         }
         cartRepository.save(cart);
+        // Recorded after the write succeeds, and in its own transaction, so a failure to log can
+        // never cost the shopper their cart.
+        interactions.cartAdd(actor, product.getId());
         return toView(cart);
     }
 

@@ -56,6 +56,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/v1/orders/*/track").permitAll()
                         .requestMatchers("/api/v1/assistant/**").permitAll()
 
+                        // Rails are public, but model health and placement click-through
+                        // describe the whole business, so they sit behind staff roles.
+                        .requestMatchers("/api/v1/recommendations/status",
+                                         "/api/v1/recommendations/performance")
+                            .hasAnyRole("SUPPORT", "ADMIN")
+                        .requestMatchers("/api/v1/recommendations/**").permitAll()
+
                         // Personal data requires a session
                         .requestMatchers("/api/v1/me/**").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/v1/orders/mine").authenticated()

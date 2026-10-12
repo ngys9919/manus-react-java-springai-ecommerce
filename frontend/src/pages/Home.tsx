@@ -5,6 +5,7 @@ import { ApiError } from '../lib/api'
 import type { CategoryView, ProductSummary } from '../types'
 import { ProductCard } from '../components/ProductCard'
 import { EmptyState, ErrorState, ProductGridSkeleton } from '../components/States'
+import { RecommendationRail } from '../components/RecommendationRail'
 import { BoxIcon, SparkIcon, TruckIcon } from '../components/Icons'
 import { useAssistant } from '../state/AssistantContext'
 
@@ -95,6 +96,14 @@ export function Home() {
 
       {!error ? (
         <>
+          {/* Placed above the catalogue so a returning shopper sees their own picks first.
+              A brand new visitor gets a labelled popularity fallback instead of an empty slot. */}
+          <RecommendationRail
+            surface="home_for_you"
+            loader={(signal) => api.fetchForYou(8, signal)}
+            emptyMessage="Browse a few products and recommendations will appear here."
+          />
+
           <section className="section">
             <div className="section__head">
               <div>

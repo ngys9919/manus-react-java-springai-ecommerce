@@ -333,3 +333,54 @@ export interface ProblemDetail {
   path?: string
   errors?: Record<string, string>
 }
+
+// ------------------------------------------------------------- recommendations
+
+/** A recommended product, with the reason it was chosen and the strategy behind it. */
+export interface RecommendedProduct {
+  product: ProductSummary
+  score: number
+  reason: string
+  strategy: string
+}
+
+/**
+ * One rendered rail.
+ *
+ * `fallback` is true when personalisation was not possible and a non-personal strategy answered
+ * instead, and `note` explains why. The UI says so rather than presenting a generic list as if it
+ * had been tailored.
+ */
+export interface RecommendationRail {
+  strategy: string
+  title: string
+  subtitle: string | null
+  anchor: string | null
+  recommendationId: string
+  items: RecommendedProduct[]
+  fallback: boolean
+  note: string | null
+}
+
+export interface PlacementPerformance {
+  surface: string
+  impressions: number
+  clicks: number
+  clickThroughRate: number
+}
+
+export interface RecommendationModelStatus {
+  enabled: boolean
+  productsModelled: number
+  productsWithBehaviour: number
+  interactions: number
+  builtAt: string
+}
+
+/** Measurement events the browser is allowed to report. Behaviour is recorded server-side. */
+export interface RecommendationEvent {
+  type: 'RECO_IMPRESSION' | 'RECO_CLICK'
+  productId: number
+  recommendationId: string
+  surface: string
+}

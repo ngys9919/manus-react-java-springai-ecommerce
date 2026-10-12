@@ -35,6 +35,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -314,6 +315,7 @@ public class AssistantService {
                     degradedReason + " I answered from the catalogue rules instead.", "warning"));
         }
 
+        replyBlocks = pruneRedundantCardBlocks(replyBlocks);
         // 9. Outbound moderation
         ModerationService.Verdict outbound = moderationService.screenOutbound(conversation.getId(), replyText);
         if (outbound.changed()) {
@@ -464,6 +466,36 @@ public class AssistantService {
                 System.currentTimeMillis() - started,
                 Math.max(remaining, 0),
                 escalated);
+    }
+
+    /**
+     * Drops a card block that shows a single product when the same reply also offers a richer set.
+     *
+     * <p>The model sometimes searches for a product the shopper has just named and then recommends
+     * around it. That search adds nothing: the shopper already knows about that product, and the
+     * one-card block sits above the useful results. A single-result search on its own is left
+     * alone, because there the card <em>is</em> the answer.</p>
+     */
+    private List<ChatBlock> pruneRedundantCardBlocks(List<ChatBlock> blocks) {
+        long cardBlocks = blocks.stream()
+                .filter(block -> ChatBlock.TYPE_PRODUCT_CARDS.equals(block.type()))
+                .count();
+        if (cardBlocks < 2) {
+            return blocks;
+        }
+        List<ChatBlock> pruned = new ArrayList<>(blocks.size());
+        for (ChatBlock block : blocks) {
+            boolean singleCard = ChatBlock.TYPE_PRODUCT_CARDS.equals(block.type()) && cardCount(block) == 1;
+            if (!singleCard) {
+                pruned.add(block);
+            }
+        }
+        return pruned;
+    }
+
+    private int cardCount(ChatBlock block) {
+        Object products = block.data() == null ? null : block.data().get("products");
+        return products instanceof Collection<?> collection ? collection.size() : 0;
     }
 
     private List<QuickReply> collectReplies(List<ChatBlock> blocks) {

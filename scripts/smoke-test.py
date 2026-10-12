@@ -238,6 +238,100 @@ status, resolved = call("POST", f"/api/v1/insights/assistant/escalations/{escala
                         token=staff_token)
 check("resolve escalation", status == 200 and resolved["status"] == "RESOLVED")
 
+# ---------------------------------------------------------- recommendations
+section("Recommendations")
+
+status, trending = call("GET", "/api/v1/recommendations/trending?limit=5")
+check("trending rail", status == 200 and len(trending["items"]) >= 3, f"status={status}")
+check("trending carries reasons",
+      all(item["reason"] for item in trending["items"]),
+      f"blank_reasons={sum(1 for i in trending['items'] if not i['reason'])}")
+check("rail has an id for attribution", bool(trending["recommendationId"]))
+
+status, cold = call("GET", "/api/v1/recommendations/for-you?limit=4", guest="reco-cold-start")
+check("cold-start rail falls back honestly",
+      status == 200 and cold["fallback"] is True and cold["note"],
+      f"fallback={cold.get('fallback')} note={cold.get('note')}")
+
+status, similar = call("GET", "/api/v1/recommendations/products/SKU-1001/similar?limit=4")
+check("similar rail", status == 200 and len(similar["items"]) >= 3, f"status={status}")
+check("similar never returns the anchor",
+      all(item["product"]["sku"] != "SKU-1001" for item in similar["items"]))
+
+status, bought = call("GET", "/api/v1/recommendations/products/SKU-1001/also-bought?limit=4")
+check("bought-together rail", status == 200 and len(bought["items"]) >= 3, f"status={status}")
+check("bought-together cites a share of buyers",
+      all("%" in item["reason"] for item in bought["items"]),
+      f"reasons={[i['reason'] for i in bought['items']][:2]}")
+check("bought-together is complementary, not the same category",
+      all(item["product"]["categorySlug"] != "laptops" for item in bought["items"]),
+      f"categories={sorted({i['product']['categorySlug'] for i in bought['items']})}")
+
+# Browsing should move the personalised rail.
+personal = "reco-live-shopper"
+for slug in ("optix-r7-mirrorless", "securecam-360", "auraglow-smart-bulb-4pack"):
+    call("GET", f"/api/v1/catalog/products/{slug}", guest=personal)
+status, mine = call("GET", "/api/v1/recommendations/for-you?limit=5", guest=personal)
+check("personalised rail activates after browsing",
+      status == 200 and mine["fallback"] is False and len(mine["items"]) >= 3,
+      f"fallback={mine.get('fallback')} items={len(mine['items']) if status == 200 else 'n/a'}")
+check("personalised rail explains itself",
+      all("Because you" in item["reason"] or item["reason"] for item in mine["items"]),
+      f"reasons={[i['reason'][:34] for i in mine['items']][:2]}")
+browsed = {"optix-r7-mirrorless", "securecam-360", "auraglow-smart-bulb-4pack"}
+check("personalised rail reflects what was browsed",
+      any(item["product"]["slug"] not in browsed and
+          item["product"]["categorySlug"] in {"cameras", "smart-home"}
+          for item in mine["items"]),
+      f"categories={sorted({i['product']['categorySlug'] for i in mine['items']})}")
+
+# Basket cross-sell follows the cart.
+call("POST", "/api/v1/cart/items", {"sku": "SKU-5001", "quantity": 1}, guest="reco-cart-shopper")
+status, cross = call("GET", "/api/v1/recommendations/cart?limit=4", guest="reco-cart-shopper")
+check("cart cross-sell rail", status == 200 and len(cross["items"]) >= 2, f"status={status}")
+check("cart cross-sell excludes what is already in the basket",
+      all(item["product"]["sku"] != "SKU-5001" for item in cross["items"]))
+
+# Measurement events, and the boundary around them.
+status, ack = call("POST", "/api/v1/recommendations/events", {"events": [
+    {"type": "RECO_IMPRESSION", "productId": 1, "recommendationId": "rail-test", "surface": "smoke"},
+    {"type": "RECO_IMPRESSION", "productId": 2, "recommendationId": "rail-test", "surface": "smoke"},
+    {"type": "RECO_CLICK", "productId": 2, "recommendationId": "rail-test", "surface": "smoke"},
+]}, guest="reco-tracker")
+check("measurement events recorded", status == 200 and ack["recorded"] == 3, f"{ack}")
+status, forged = call("POST", "/api/v1/recommendations/events", {"events": [
+    {"type": "PURCHASE", "productId": 1, "surface": "forged"},
+    {"type": "CART_ADD", "productId": 1, "surface": "forged"},
+    {"type": "NOT_A_TYPE", "productId": 1, "surface": "forged"},
+    {"type": "RECO_CLICK", "productId": 999999, "recommendationId": "x", "surface": "forged"},
+]}, guest="reco-tracker")
+check("client cannot report behaviour", status == 200 and forged["rejected"] == 4 and forged["recorded"] == 0,
+      f"{forged}")
+
+status, reco_status = call("GET", "/api/v1/recommendations/status")
+# 401 for an anonymous caller, 403 for a signed-in shopper without the role. Both are correct.
+check("model status is staff-only", status in (401, 403), f"status={status}")
+status, reco_status = call("GET", "/api/v1/recommendations/status", token=staff_token)
+check("model status for staff",
+      status == 200 and reco_status["productsModelled"] >= 20 and reco_status["interactions"] > 0,
+      f"{reco_status if status == 200 else status}")
+status, performance = call("GET", "/api/v1/recommendations/performance?days=14", token=staff_token)
+check("placement performance", status == 200 and any(p["surface"] == "smoke" for p in performance),
+      f"{performance if status == 200 else status}")
+
+# The assistant can recommend from behaviour.
+status, reco_chat = call("POST", "/api/v1/assistant/chat",
+                         {"message": "What do people usually buy together with the Aurora Book Pro 14?"},
+                         guest="reco-assistant")
+blocks = reco_chat["reply"]["blocks"] if status == 200 else []
+check("assistant recommends from behaviour",
+      status == 200 and any(b.get("title") == "Frequently bought together" for b in blocks),
+      f"blocks={[b.get('title') for b in blocks]}")
+check("assistant does not repeat the named product as a card",
+      all(not (b.get("type") == "PRODUCT_CARDS" and len(b.get("data", {}).get("products", [])) == 1)
+          for b in blocks),
+      f"blocks={[b.get('title') for b in blocks]}")
+
 # -------------------------------------------------------------------- docs
 section("Documentation")
 status, openapi = call("GET", "/v3/api-docs")

@@ -22,6 +22,21 @@ leaving the conversation.
 spec sheets, a guest-friendly cart with stock guards and shipping thresholds, a demo checkout, and
 order tracking that distinguishes signed-in shoppers from guests.
 
+**Recommendations.** Rails built from what shoppers actually did, not from a hand-written list.
+
+- **Personalised** — a "Recommended for you" rail on the home page, driven by the shopper's own
+  browsing with a two-week half-life, for guests as well as signed-in users.
+- **Bought together** — what people genuinely buy with a product, quoted as a share of buyers
+  ("55% of buyers also bought this"), computed from purchases alone rather than browsing.
+- **Similar** — comparable alternatives that prefer the same category and fall back to attributes for
+  a product nobody has bought yet.
+- **Basket cross-sell** — "complete your order" suggestions that follow the basket and update when it
+  changes.
+- **Every recommendation explains itself** — each product carries the reason it was chosen, and a rail
+  that could not personalise says so instead of pretending.
+- **Measured** — impressions are counted only when a rail is actually scrolled into view, clicks are
+  attributed to the rail that produced them, and click-through per placement is on the staff dashboard.
+
 **Assistant.** A conversational layer that is useful for the three things shoppers actually do:
 find something, compare options, and check on an order.
 
@@ -29,7 +44,11 @@ find something, compare options, and check on an order.
   intents with a *sample utterance* and a *typical answer* for each, and states its limits up front.
 - **Tool-grounded answers** — the model never invents products. Every claim comes from a tool call
   against the live catalogue: `search_products`, `get_product_details`, `compare_products`,
-  `find_best_value`, `list_categories`, cart operations, order lookup and store policy.
+  `find_best_value`, `recommend_products`, `list_categories`, cart operations, order lookup and store
+  policy.
+- **Recommends from behaviour** — asked what goes with a product, it uses the same recommendation
+  engine as the storefront rails and passes on the reason, so a conversation and a product page never
+  disagree. When there is not enough history to support a claim, it says so and searches instead.
 - **Context-aware follow-ups** — "which one should I buy?" resolves against the two products it just
   compared, because the assistant replays the recent transcript into the model on every turn.
 - **Actions, not just answers** — it can add to the cart, change quantities, remove items and raise a
@@ -160,7 +179,7 @@ Diagram sources: [`artifacts/architecture.mmd`](artifacts/architecture.mmd) (Mer
 
 ```bash
 # End-to-end API suite: catalogue, cart, checkout, auth, assistant tool loop,
-# moderation, escalation, analytics, OpenAPI
+# moderation, escalation, recommendations, analytics, OpenAPI
 python3 scripts/smoke-test.py http://localhost:8080
 
 # Regenerate branded product artwork from the seeded catalogue
@@ -178,9 +197,9 @@ Latest results in this environment:
 
 | Suite | Result |
 | --- | --- |
-| `scripts/smoke-test.py` (API, end to end) | **67 / 67 passing** |
+| `scripts/smoke-test.py` (API, end to end) | **88 / 88 passing** |
 | `npx tsc -b && npm run build` | Clean, no type errors |
-| `scripts/capture-screens.py` (18 UI screens, desktop + mobile) | 18 / 18 captured, **0 console errors** |
+| `scripts/capture-screens.py` (22 UI screens, desktop + mobile) | 22 / 22 captured, **0 console errors** |
 
 ### Screenshots
 
@@ -201,6 +220,10 @@ Captured from the running stack into `artifacts/screenshots/`:
 | `15-insights-staff.png` | Assistant analytics and the escalation queue |
 | `16-orders.png` | Order tracking and history |
 | `17-mobile-home.png`, `18-mobile-assistant.png` | Mobile layouts |
+| `19-reco-home-cold-start.png` | Recommendations for a new visitor: a labelled popularity fallback, not a fake personalisation |
+| `20-reco-home-personalised.png` | The same rail after browsing — every card states why it is there |
+| `21-reco-product-detail.png` | "Frequently bought together" with real co-purchase shares, and "similar" staying in category |
+| `22-reco-cart-cross-sell.png` | Basket cross-sell following what is in the cart |
 
 ---
 

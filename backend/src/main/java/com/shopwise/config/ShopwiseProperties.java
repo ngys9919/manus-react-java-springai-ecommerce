@@ -19,6 +19,7 @@ public class ShopwiseProperties {
     private Security security = new Security();
     private Assistant assistant = new Assistant();
     private Commerce commerce = new Commerce();
+    private Recommendations recommendations = new Recommendations();
 
     @Getter
     @Setter
@@ -80,5 +81,47 @@ public class ShopwiseProperties {
         private BigDecimal taxRate = new BigDecimal("0.08");
         private String supportEmail = "support@shopwise.dev";
         private int lowStockThreshold = 5;
+    }
+
+    @Getter
+    @Setter
+    public static class Recommendations {
+        /** Master switch. When false the endpoints return empty rails rather than failing. */
+        private boolean enabled = true;
+        /** How far back the similarity model looks. Older behaviour says less about today. */
+        private int similarityWindowDays = 90;
+        /**
+         * Half-life of the trending decay, in days. At 7, an interaction a week old counts half as
+         * much as one from today.
+         */
+        private double trendingHalfLifeDays = 7.0;
+        /** How long a built model is reused before being rebuilt from the interaction log. */
+        private int modelTtlSeconds = 300;
+        /** Rails default to this many items when the caller does not say. */
+        private int defaultLimit = 8;
+        private int maxLimit = 24;
+        /**
+         * How hard to push back on near-duplicates when filling a rail. 0 fills purely by score and
+         * tends to return four variants of the same product; 0.4 optimises for variety.
+         */
+        private double diversityLambda = 0.25;
+        /**
+         * Diversity for rails that should stay on topic. "Similar to this" is expected to return
+         * comparable products; spreading it across categories would be actively unhelpful, whereas
+         * a home-page rail benefits from breadth.
+         */
+        private double focusedDiversityLambda = 0.08;
+        /**
+         * Weakest similarity a product may have and still appear in a "similar" rail. Without a
+         * floor, the diversity penalty can push an unrelated product above a genuine match.
+         */
+        private double similarityFloor = 0.20;
+        /**
+         * Interactions needed before a product's behaviour is trusted as much as its attributes.
+         * Below this the model leans on content similarity instead.
+         */
+        private int supportSaturation = 12;
+        /** Minimum items in a rail before the response is marked as a fallback. */
+        private int minimumUsefulRailSize = 4;
     }
 }
