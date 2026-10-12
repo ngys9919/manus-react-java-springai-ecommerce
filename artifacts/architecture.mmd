@@ -1,0 +1,66 @@
+%% Shopwise architecture: Vite + React storefront, Spring Boot 4 + Spring AI service, PostgreSQL 16
+flowchart TB
+    classDef storefront fill:#eef2ff,stroke:#4f46e5,stroke-width:2px,color:#1e1b4b
+    classDef service fill:#f1f5f9,stroke:#0f172a,stroke-width:2px,color:#0f172a
+    classDef assistant fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#075985
+    classDef audit fill:#fef3c7,stroke:#b45309,stroke-width:2px,color:#7c2d12
+    classDef data fill:#dcfce7,stroke:#15803d,stroke-width:2px,color:#14532d
+    classDef db fill:#bbf7d0,stroke:#15803d,stroke-width:2px,color:#14532d
+
+    subgraph Browser["Browser — Vite + React 19 + TypeScript"]
+        direction TB
+        UI["Storefront pages<br/>home · shop · product · cart<br/>checkout · orders · login · insights"]
+        PANEL["Assistant panel<br/>onboarding · message list<br/>block renderer · composer"]
+        STATE["Context state<br/>auth · cart · assistant · toast"]
+        APICLIENT["Typed API client<br/>problem+json · guest token"]
+        UI --> STATE
+        PANEL --> STATE
+        STATE --> APICLIENT
+    end
+
+    subgraph Data["PostgreSQL 16"]
+        direction TB
+        REPO["Spring Data JPA<br/>repositories"]
+        FLY["Flyway migrations<br/>V1 schema · V2 seed"]
+        TABLES[("product (jsonb specs) · cart · shop_order<br/>conversation · chat_message (jsonb blocks)<br/>assistant_event · moderation_log · escalation_ticket")]
+        FLY --> TABLES
+        REPO --> TABLES
+    end
+
+    subgraph Backend["Spring Boot 4.1.1 — Java 21"]
+        direction TB
+        API["REST controllers<br/>catalog · cart · orders<br/>auth · assistant · insights"]
+        SEC["Security<br/>JWT filter · actor resolution · role gates"]
+        SVC["Services<br/>catalog · cart · order · auth<br/>conversation · escalation · analytics"]
+        AUDIT["AuditWriter<br/>REQUIRES_NEW + flush"]
+
+        subgraph CORE["Assistant core"]
+            direction TB
+            GUARD["Moderation<br/>inbound + outbound screening"]
+            RATE["Rate limiting<br/>conversation · user · guest"]
+            LLM["Spring AI 2.0 ChatClient<br/>OpenAI-compatible model"]
+            TOOLS["13 tool callbacks<br/>search · compare · cart · orders · policy · handoff"]
+            FB["Deterministic fallback<br/>same block types, no model"]
+            GUARD --> LLM
+            LLM -->|tool calls| TOOLS
+            LLM -->|on failure| FB
+        end
+
+        API --> SEC
+        SEC --> SVC
+        API --> GUARD
+        API --> RATE
+        CORE --> AUDIT
+    end
+
+    APICLIENT -->|"JSON over HTTP<br/>X-Guest-Token / Bearer JWT"| API
+    TOOLS --> SVC
+    SVC --> REPO
+    AUDIT --> REPO
+
+    class UI,PANEL,STATE,APICLIENT storefront
+    class API,SEC,SVC service
+    class GUARD,RATE,LLM,TOOLS,FB assistant
+    class AUDIT audit
+    class REPO,FLY data
+    class TABLES db

@@ -1,0 +1,116 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: always
+    include-binding-errors: always
+
+spring:
+  application:
+    name: shopwise-backend
+
+  datasource:
+    url: ${SHOPWISE_DB_URL:jdbc:postgresql://localhost:5432/shopwise}
+    username: ${SHOPWISE_DB_USER:shopwise}
+    password: ${SHOPWISE_DB_PASSWORD:shopwise}
+    hikari:
+      pool-name: shopwise-pool
+      maximum-pool-size: 10
+      connection-timeout: 10000
+      validation-timeout: 5000
+
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+        default_batch_fetch_size: 32
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  jackson:
+    default-property-inclusion: non_null
+
+  mvc:
+    problemdetails:
+      enabled: true
+
+  ai:
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 700ms
+        multiplier: 2
+    openai:
+      # Falls back to the sandbox-provided OpenAI-compatible endpoint.
+      api-key: ${OPENAI_API_KEY:not-configured}
+      base-url: ${OPENAI_API_BASE:https://api.openai.com/v1}
+      chat:
+        options:
+          model: ${SHOPWISE_AI_MODEL:gpt-5-mini}
+          temperature: 0.2
+          max-completion-tokens: 1400
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+  info:
+    env:
+      enabled: true
+
+info:
+  app:
+    name: Shopwise Commerce & Assistant API
+    version: 1.0.0
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+
+shopwise:
+  security:
+    jwt-secret: ${SHOPWISE_JWT_SECRET:shopwise-development-signing-key-change-me-please-32bytes}
+    token-ttl-minutes: 720
+    issuer: shopwise
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+      - http://localhost:4173
+      - http://127.0.0.1:4173
+  assistant:
+    enabled: ${SHOPWISE_ASSISTANT_ENABLED:true}
+    model: ${SHOPWISE_AI_MODEL:gpt-5-mini}
+    temperature: 0.2
+    max-completion-tokens: 1400
+    memory-window: 16
+    max-turns-per-conversation: 40
+    max-messages-per-minute: 12
+    max-messages-per-hour-per-user: 120
+    max-message-length: 1200
+    tool-result-limit: 8
+    max-comparison-size: 4
+    escalation-cooldown-minutes: 30
+  commerce:
+    free-shipping-threshold: 150.00
+    flat-shipping-fee: 12.00
+    tax-rate: 0.08
+    support-email: support@shopwise.dev
+    low-stock-threshold: 5
+
+logging:
+  level:
+    root: INFO
+    com.shopwise: INFO
+    org.springframework.ai: WARN

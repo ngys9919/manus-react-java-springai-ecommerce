@@ -1,0 +1,100 @@
+direction: right
+
+title: |md
+  # Shopwise architecture
+  Vite + React storefront, Spring Boot 4 + Spring AI service, PostgreSQL 16
+| { near: top-center }
+
+browser: Browser {
+  style.fill: "#eef2ff"
+  style.stroke: "#4f46e5"
+
+  ui: "Storefront pages\nhome · shop · product · cart\ncheckout · orders · login · insights" {
+    style.fill: "#ffffff"
+  }
+  panel: "Assistant panel\nonboarding · messages\nblock renderer · composer" {
+    style.fill: "#ffffff"
+  }
+  state: "Context state\nauth · cart · assistant · toast" {
+    style.fill: "#ffffff"
+  }
+  client: "Typed API client\nproblem+json · guest token" {
+    style.fill: "#ffffff"
+  }
+
+  ui -> state
+  panel -> state
+  state -> client
+}
+
+backend: "Spring Boot 4.1.1 · Java 21" {
+  style.fill: "#f8fafc"
+  style.stroke: "#0f172a"
+
+  api: "REST controllers\ncatalog · cart · orders\nauth · assistant · insights" {
+    style.fill: "#ffffff"
+  }
+  sec: "Security\nJWT filter · actor resolution\nrole gates" {
+    style.fill: "#ffffff"
+  }
+  svc: "Services\ncatalog · cart · order · auth\nconversation · escalation · analytics" {
+    style.fill: "#ffffff"
+  }
+
+  assistant: "Assistant core" {
+    style.fill: "#e0f2fe"
+
+    guard: "Moderation\ninbound + outbound" {
+      style.fill: "#ffffff"
+    }
+    rate: "Rate limiting\nconversation · user · guest" {
+      style.fill: "#ffffff"
+    }
+    llm: "Spring AI 2.0 ChatClient\nOpenAI-compatible model" {
+      style.fill: "#ffffff"
+    }
+    tools: "13 tool callbacks\nsearch · compare · cart\norders · policy · handoff" {
+      style.fill: "#ffffff"
+    }
+    fallback: "Deterministic fallback\nsame block types" {
+      style.fill: "#ffffff"
+    }
+
+    guard -> llm: screen
+    llm -> tools: tool calls
+    llm -> fallback: "on failure"
+  }
+
+  audit: "AuditWriter\nREQUIRES_NEW + flush" {
+    style.fill: "#fef3c7"
+  }
+
+  api -> sec -> svc
+  api -> assistant
+  assistant -> audit
+  svc -> audit
+}
+
+data: "PostgreSQL 16" {
+  style.fill: "#dcfce7"
+  style.stroke: "#15803d"
+
+  jpa: "Spring Data JPA" {
+    style.fill: "#ffffff"
+  }
+  flyway: "Flyway\nV1 schema · V2 seed" {
+    style.fill: "#ffffff"
+  }
+  tables: "product (jsonb specs) · cart · shop_order\nconversation · chat_message (jsonb blocks)\nassistant_event · moderation_log · escalation_ticket" {
+    style.fill: "#ffffff"
+    shape: cylinder
+  }
+
+  jpa -> tables
+  flyway -> tables
+}
+
+client -> api: "JSON over HTTP\nX-Guest-Token / Bearer JWT"
+assistant.tools -> svc: "read + write"
+svc -> jpa
+audit -> jpa
