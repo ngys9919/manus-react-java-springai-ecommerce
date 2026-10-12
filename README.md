@@ -168,6 +168,10 @@ python3 scripts/generate-product-media.py
 
 # Drive the UI in a headless browser and capture screenshots
 python3 scripts/capture-screens.py http://localhost:4173 artifacts/screenshots
+
+# Gate a push on credential detection
+python3 scripts/secret-scan.py            # working tree
+python3 scripts/secret-scan.py --staged   # staged files only, for a pre-push hook
 ```
 
 Latest results in this environment:
@@ -201,6 +205,14 @@ Captured from the running stack into `artifacts/screenshots/`:
 ---
 
 ## Design decisions worth knowing
+
+0. **Secrets never live in the repository.** Configuration reads every credential from an
+   environment variable with a documented local fallback (see `.env.example`), and
+   `SecurityStartupCheck` refuses to boot with the development JWT signing key once a non-local
+   profile is active — a clone that reaches production without overriding it fails loudly instead
+   of accepting forgeable sessions. `scripts/secret-scan.py` blocks a push that would add a real
+   credential, and its inline allowlist keeps the seeded demo accounts as a conscious exception
+   rather than a blanket ignore.
 
 1. **The assistant loop is not one transaction.** Conversation, cart and audit writes commit
    independently, so a failure while recording analytics can never roll back what the shopper just

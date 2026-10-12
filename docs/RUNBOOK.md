@@ -95,6 +95,8 @@ Reads the seeded catalogue from PostgreSQL and writes one branded SVG per SKU pl
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
+| `Refusing to start: shopwise.security.jwt-secret is still the development placeholder` | A non-local profile is active and `SHOPWISE_JWT_SECRET` was never set | Set `SHOPWISE_JWT_SECRET` (`openssl rand -base64 48`). The guard exists so a clone cannot reach production with a signing key that is public in this repository. Local runs with no profile, or with `dev`/`local`/`test`, only log a warning. |
+| `shopwise.security.jwt-secret is only N bytes` | Signing key shorter than 256 bits | HMAC-SHA256 needs at least 32 bytes; generate a longer one. |
 | `relation "product" does not exist` | Flyway did not run | Spring Boot 4 needs `spring-boot-starter-flyway`; `flyway-core` alone is not auto-configured. Confirm the starter is in `pom.xml` and that `spring.flyway.enabled` is not `false`. |
 | `No qualifying bean of type 'com.fasterxml.jackson.databind.ObjectMapper'` | Spring Boot 4 uses **Jackson 3** (`tools.jackson.*`) and does not auto-configure the Jackson 2 mapper | Do not inject `ObjectMapper`; the message mapper does explicit conversion. |
 | Startup fails binding `spring.jackson.serialization` | `write-dates-as-timestamps` no longer exists in Jackson 3 | Remove the property. |
