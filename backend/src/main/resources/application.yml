@@ -33,6 +33,14 @@ spring:
     enabled: true
     locations: classpath:db/migration
     baseline-on-migrate: true
+    # Compose starts this service only once PostgreSQL reports healthy, so locally the database is
+    # always there. A platform with no equivalent of `depends_on: condition: service_healthy` may
+    # start this container first - Railway says so explicitly - and without retries the very first
+    # Flyway connection fails, the context dies with it, and the deploy is marked failed even
+    # though the database arrives seconds later. Two minutes of patience costs nothing when the
+    # database is already up.
+    connect-retries: ${SHOPWISE_DB_CONNECT_RETRIES:24}
+    connect-retries-interval: ${SHOPWISE_DB_CONNECT_RETRIES_INTERVAL:5s}
 
   jackson:
     default-property-inclusion: non_null

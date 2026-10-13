@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# Adapt the rendered nginx configuration to the platform the container is on.
+#
+# Two things vary between Compose and a platform such as Railway, and both are
+# decided here, before 20-envsubst-on-templates.sh renders the server block.
+#
+# This file ends in .envsh on purpose. The nginx entrypoint *sources* .envsh
+# files and *executes* .sh files, and an executed script runs in a subshell
+# whose exports are discarded - nothing set here would reach the template.
+# ---------------------------------------------------------------------------
+
+# --- which port to serve on -------------------------------------------------
+# Many container platforms inject PORT and route public traffic to it. nginx
+# would otherwise sit on the port compiled into its image (80) while the
+# platform routes elsewhere, and the service would look unreachable while being
+# perfectly healthy. Compose sets no PORT, so this changes nothing locally.
+if [ -n "${PORT:-}" ]; then
+    export SHOPWISE_LISTEN_PORT="$PORT"
+fi
+
+# --- how to re-resolve the backend ------------------------------------------
+# The upstream is declared with `resolve`, so nginx needs a nameserver to track
+# it with. Docker publishes its embedded DNS at 127.0.0.11; other platforms put
+# their own resolver in /etc/resolv.conf. Reading it here means one image works
+# on both, rather than hardcoding Docker's address and breaking elsewhere.
+if [ -z "${SHOPWISE_DNS_RESOLVER:-}" ] && [ -r /etc/resolv.conf ]; then
+    resolver="$(awk '/^nameserver/ { print $2; exit }' /etc/resolv.conf)"
+    if [ -n "$resolver" ]; then
+        export SHOPWISE_DNS_RESOLVER="$resolver"
+    fi
+fi
+
+# Last resort: Docker's embedded resolver, which is where Compose deployments
+# always end up anyway.
+if [ -z "${SHOPWISE_DNS_RESOLVER:-}" ]; then
+    export SHOPWISE_DNS_RESOLVER=127.0.0.11
+fi

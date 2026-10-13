@@ -45,6 +45,23 @@ with one command, so the remaining decision is which host to run it on and at wh
 [A permanent deployment](docs/DEPLOYMENT.md#a-permanent-deployment) and
 [Resource sizing](docs/DEPLOYMENT.md#resource-sizing).
 
+## Deploying to Railway
+
+Railway does not run `docker-compose.yml`; each Compose service becomes its own Railway service.
+The mapping is in [docs/RAILWAY.md](docs/RAILWAY.md), and three things about it needed code or
+configuration rather than just documentation.
+
+| Railway trait | Consequence | Fix |
+| --- | --- | --- |
+| `depends_on: condition: service_healthy` has no equivalent — their documentation says so outright | The backend can boot before PostgreSQL accepts connections. The first Flyway connection fails, the context dies with it, and the deploy is marked failed even though the database arrives seconds later. This is the single most likely way to fail | `spring.flyway.connect-retries: 24` at 5s intervals. Verified by pointing the backend at a dead port: it retried with a 1-5s backoff instead of exiting |
+| Public traffic is routed to whatever port the process listens on | A fixed nginx listener would sit on 80 while the platform routes elsewhere, and the service would look unreachable while healthy | The frontend honours `PORT`. Verified by rendering the config with `PORT=9000` |
+| Private networking hands a service a new address on redeploy, and nginx resolves an upstream once at startup and caches it | Two failures: nginx refuses to start at all if the backend's name does not resolve *during* startup, and it keeps proxying to a stale address after a backend redeploy | `resolver` + `zone` + `resolve` on the upstream block, with the resolver read from /etc/resolv.conf at startup so one image works on Docker and on Railway. Verified by running the image with an upstream that cannot resolve: nginx now starts and returns a per-request 502 |
+
+The entrypoint shim is named `.envsh`, not `.sh`, because the nginx image *sources* `.envsh` files
+and *executes* `.sh` files — an executed script's exports never reach
+`20-envsubst-on-templates.sh`, so the listen port would silently stay at 80.
+Re-ran the full suite against the rebuilt container stack afterwards: **95 passed, 0 failed**.
+
 ## Findings that shaped the code
 
 1. **Spring Boot 4 uses Jackson 3** (`tools.jackson.*`). `com.fasterxml.jackson.databind.ObjectMapper`

@@ -1,21 +1,34 @@
 # ---------------------------------------------------------------------------
 # Shopwise frontend — server block
 #
-# Rendered from this template at container start. Two values are substituted:
+# Rendered from this template at container start. Three values are substituted:
 #
 #   SHOPWISE_LISTEN_PORT   port nginx listens on inside the container
 #   SHOPWISE_API_UPSTREAM  host:port of the backend API
+#   SHOPWISE_DNS_RESOLVER  nameserver used to re-resolve that host at runtime
 #
-# Both have defaults set in the Dockerfile, so the image works unchanged with
+# All have defaults set in the Dockerfile, so the image works unchanged with
 # Compose service names and can be repointed at a different backend without a
 # rebuild.
 # ---------------------------------------------------------------------------
 
-# The backend is a sibling service on the Compose network. nginx resolves this
-# once at startup, which is why the backend declares a healthcheck and the
-# frontend waits for it to pass.
+# nginx resolves an upstream hostname once, at startup, and caches the result for the life of the
+# process. On a platform that hands a service a new address when it redeploys - which is what
+# Railway's private network does - a statically resolved upstream keeps pointing at an address that
+# no longer exists, and requests fail right after a backend deploy. Worse, if the name does not
+# resolve *during* startup nginx refuses to start at all, so the frontend cannot come up before the
+# backend.
+#
+# `resolve` makes nginx track the name in the background instead, using the platform's own resolver,
+# which the entrypoint script reads out of /etc/resolv.conf. Requires nginx 1.27.3+; the image is
+# 1.29. Compose still starts the backend first via its healthcheck, so locally nothing changes.
+resolver ${SHOPWISE_DNS_RESOLVER} valid=10s ipv6=off;
+
+# The backend is a sibling service on the Compose network.
 upstream shopwise_api {
-    server ${SHOPWISE_API_UPSTREAM};
+    # `resolve` needs a shared-memory zone so the address list can be updated in place.
+    zone shopwise_api 64k;
+    server ${SHOPWISE_API_UPSTREAM} resolve;
     keepalive 16;
 }
 

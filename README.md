@@ -167,6 +167,8 @@ shopwise/
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Component diagram, request lifecycle, data model |
 | [docs/ASSISTANT.md](docs/ASSISTANT.md) | Assistant design: intents, tools, guardrails, fallbacks, analytics |
 | [docs/RUNBOOK.md](docs/RUNBOOK.md) | Run, test, verify and troubleshoot |
+| [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Containers, configuration, TLS, backups, permanent hosting |
+| [docs/RAILWAY.md](docs/RAILWAY.md) | Deploying to Railway: service mapping, variables, the port and DNS differences |
 
 ![Shopwise architecture](artifacts/architecture.png)
 
