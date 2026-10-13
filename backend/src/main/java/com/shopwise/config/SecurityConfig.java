@@ -119,7 +119,8 @@ public class SecurityConfig {
             // checkOrigin returns the matched origin, or null when nothing matches - it does not
             // return an empty string, so it must be compared against null.
             boolean byPattern = !patterns.isEmpty() && configuration.checkOrigin(origin) != null;
-            boolean sameOrigin = allowSameOrigin && isSameOrigin(request, origin);
+            boolean sameOrigin = allowSameOrigin
+                    && (browserSaysSameOrigin(request) || isSameOrigin(request, origin));
 
             if (!exact && !byPattern && !sameOrigin) {
                 // An empty configuration allows no origin, which Spring reports as
@@ -146,6 +147,26 @@ public class SecurityConfig {
             configuration.setMaxAge(3600L);
             return configuration;
         };
+    }
+
+    /**
+     * The browser's own statement that this request came from the page's own origin.
+     *
+     * <p>{@code Sec-Fetch-Site} is a forbidden header name: a page cannot set it, only the browser
+     * writes it, and the browser derives it from the relationship between the two origins rather
+     * than from anything the page controls. When it reads {@code same-origin}, the request really
+     * did come from our own origin, which is precisely what CORS negotiation is for.</p>
+     *
+     * <p>This is what makes the deployment work at a hostname the backend cannot know. Comparing
+     * the Origin against the request's own authority needs the request to have arrived with its
+     * original {@code Host}, and any proxy that rewrites Host - Vite with {@code changeOrigin},
+     * most reverse proxies - destroys that. Without this, such a deployment answers every mutating
+     * request with 403 until the hostname is configured by hand, and it breaks again on the next
+     * restart if that configuration is not persisted. A non-browser client that sets the header
+     * gains nothing: CORS is enforced by browsers, so it was never subject to the check.</p>
+     */
+    private boolean browserSaysSameOrigin(HttpServletRequest request) {
+        return "same-origin".equalsIgnoreCase(request.getHeader("Sec-Fetch-Site"));
     }
 
     /**

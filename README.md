@@ -205,7 +205,7 @@ Latest results in this environment:
 
 | Suite | Result |
 | --- | --- |
-| `scripts/smoke-test.py` (API, end to end) | **94 / 94 passing** |
+| `scripts/smoke-test.py` (API, end to end) | **95 / 95 passing** |
 | `scripts/assistant-reco-scenario.py` (8-turn shopper conversation) | **28 / 28 passing** |
 | `npx tsc -b && npm run build` | Clean, no type errors |
 | `scripts/capture-screens.py` (24 UI screens, desktop + mobile) | 24 / 24 captured, **0 console errors** |

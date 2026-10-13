@@ -83,8 +83,17 @@ checkout, order-tracking permissions, authentication, role-gated analytics, the 
 comparison rendering, context-aware follow-up, prompt-injection blocking, card redaction, escalation,
 `/resume`, feedback, transcript ownership, analytics aggregation and the OpenAPI document.
 
-**Latest run: 94 passed, 0 failed** (88 + 6 CORS checks added by bug 28), and 93/93 against the
+**Latest run: 95 passed, 0 failed** (88 + 7 CORS checks added by bug 28), and 94/94 against the
 container stack, where the opt-in deployed-origin check does not run.
+
+The CORS fix was completed by trusting `Sec-Fetch-Site: same-origin`. Comparing the Origin against
+the request's own authority needs the original `Host`, which a Host-rewriting proxy destroys, so any
+deployment at a hostname the backend cannot know would have needed hand configuration - and would
+have broken again on the next restart that lost it. `Sec-Fetch-Site` is a forbidden header name: a
+page cannot write it and the browser derives it from the real relationship between the two origins,
+so it keeps the check meaningful while making configuration unnecessary. Verified by running the
+whole suite and the browser flow with `SHOPWISE_ALLOWED_ORIGIN_PATTERNS` unset, with cross-site
+origins still rejected.
 
 `scripts/assistant-reco-scenario.py` drives one eight-turn shopper conversation through the
 assistant and reads which tools fired back from the `assistant_event` audit log after every turn,

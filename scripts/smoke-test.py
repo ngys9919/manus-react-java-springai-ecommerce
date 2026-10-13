@@ -21,7 +21,8 @@ GUEST = f"smoke-{uuid.uuid4().hex[:12]}"
 PASS, FAIL = [], []
 
 
-def call(method: str, path: str, body=None, token=None, guest=GUEST, timeout=180, origin=None):
+def call(method: str, path: str, body=None, token=None, guest=GUEST, timeout=180, origin=None,
+         headers=None):
     url = f"{BASE}{path}"
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
@@ -29,6 +30,8 @@ def call(method: str, path: str, body=None, token=None, guest=GUEST, timeout=180
     request.add_header("X-Guest-Token", guest)
     if origin:
         request.add_header("Origin", origin)
+    for name, value in (headers or {}).items():
+        request.add_header(name, value)
     if token:
         request.add_header("Authorization", f"Bearer {token}")
     try:
@@ -356,6 +359,17 @@ check("unknown origin rejected", status == 403, f"status={status}")
 
 status, _ = call("POST", "/api/v1/auth/login", BAD, origin="null")
 check("opaque origin rejected", status == 403, f"status={status}")
+
+# A deployment at a hostname the backend cannot know. The browser says the request came from the
+# page's own origin, and that statement is what lets such a deployment work without configuration.
+# Sec-Fetch-Site is a forbidden header name, so a page cannot write it - the browser derives it.
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="https://unknown-host.example.com",
+                 headers={"Sec-Fetch-Site": "same-origin"})
+check("browser-declared same-origin accepted", status != 403, f"status={status}")
+
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="https://unknown-host.example.com",
+                 headers={"Sec-Fetch-Site": "cross-site"})
+check("cross-site origin still rejected", status == 403, f"status={status}")
 
 status, _ = call("OPTIONS", "/api/v1/assistant/chat", origin="http://localhost:4173")
 check("preflight answered", status in (200, 204), f"status={status}")
