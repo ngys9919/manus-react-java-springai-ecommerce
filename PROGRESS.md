@@ -21,6 +21,30 @@ all in place and verified. End-to-end suite: **88 / 88 passing**.
 Model access goes through an OpenAI-compatible endpoint (`OPENAI_API_KEY` / `OPENAI_BASE_URL`), model
 `gpt-5-mini`. Backend on `:8080`; Vite preview on `:4173` proxying `/api` → `:8080`.
 
+## Making it permanent
+
+The application was developed and verified inside a Manus Sandbox. That is not a home for a site
+anyone relies on: the sandbox hibernates when idle and the HTTP URL it exposes is explicitly
+temporary, so "permanent" is a decision about the host rather than about the code.
+
+What was missing for a host that stays up, and is now in place:
+
+| Gap | Fix |
+| --- | --- |
+| Nothing restarted the stack after a reboot. `restart: unless-stopped` restarts *containers*, and only while the Docker daemon runs; the machine reboots without being asked when a tier is upgraded or a backup is restored | `deploy/shopwise.service`, a systemd oneshot unit that comes up after `docker.service` and runs the stack from the checkout |
+| Bringing a fresh host up was a manual sequence of eight steps with two secrets to generate by hand | `scripts/deploy-persistent.sh` — idempotent, with `--dry-run`, `--origin` and `--no-systemd`. It never rewrites an existing `.env` |
+| A host that meters outbound traffic shuts *down* when the allowance is spent, so the site does not degrade, it stops | Called out in `docs/DEPLOYMENT.md`, with the auto top-up link |
+| The README's tail was structurally broken: the screenshot table had lost two rows to the end of the file, and "With Docker" / "From source" were orphaned under "Design decisions" with the second having no body | Repaired; heading levels now nest cleanly |
+
+The Docker Compose stack itself needed no changes to become deployable — it already had restart
+policies, healthchecks, a named data volume, an internal network and only one published port — which
+is the payoff for containerising it properly in the first place.
+
+**Still open:** the host has not been chosen. The code is deployable to any always-on Linux host
+with one command, so the remaining decision is which host to run it on and at which size — see
+[A permanent deployment](docs/DEPLOYMENT.md#a-permanent-deployment) and
+[Resource sizing](docs/DEPLOYMENT.md#resource-sizing).
+
 ## Findings that shaped the code
 
 1. **Spring Boot 4 uses Jackson 3** (`tools.jackson.*`). `com.fasterxml.jackson.databind.ObjectMapper`

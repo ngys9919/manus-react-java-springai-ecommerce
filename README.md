@@ -239,6 +239,9 @@ Captured from the running stack into `artifacts/screenshots/`:
 | `20-reco-home-personalised.png` | The same rail after browsing — every card states why it is there |
 | `21-reco-product-detail.png` | "Frequently bought together" with real co-purchase shares, and "similar" staying in category |
 | `22-reco-cart-cross-sell.png` | Basket cross-sell following what is in the cart |
+| `23-assistant-recommendations.png` | The assistant answering "what do people buy with the Aurora Book Pro 14", with the rail's reasons and the tool chips showing `recommend_products` ran |
+| `24-assistant-recommendation-refusal.png` | The same question about a product with no co-purchase history: the tool refuses and says why |
+| `25-assistant-starter-fixed.png` | A conversation starter answered end to end after the CORS fix, with the tool chips that show which tools ran |
 
 ---
 
@@ -266,6 +269,8 @@ Captured from the running stack into `artifacts/screenshots/`:
 5. **Degradation is a feature.** Every dependency has a fallback path, and the UI always says which
    mode it is in rather than pretending.
 
+## Running it
+
 ### With Docker (fastest)
 
 Three containers — PostgreSQL, the Spring Boot API and an nginx image serving the storefront — with
@@ -281,6 +286,17 @@ Open **http://localhost:8080**. Only the frontend publishes a port; the API is r
 nginx reverse proxy. Full details, including TLS, backups and troubleshooting, are in
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
+To put it on a host that stays up — with auto-start after a reboot, a domain and HTTPS — run
+`./scripts/deploy-persistent.sh` on that host and follow
+[A permanent deployment](docs/DEPLOYMENT.md#a-permanent-deployment).
+
 ### From source
-| `23-assistant-recommendations.png` | The assistant answering "what do people buy with the Aurora Book Pro 14", with the rail's reasons and the tool chips showing `recommend_products` ran |
-| `24-assistant-recommendation-refusal.png` | The same question about a product with no co-purchase history: the tool refuses and says why |
+
+For development: Java 21+, Maven 3.9+, Node 20+ and PostgreSQL 16+, as laid out under
+[Quick start](#quick-start). The API runs with `mvn spring-boot:run` and the storefront with
+`npm run dev`, whose proxy to the API is configured in `vite.config.ts`. Flyway migrates and seeds
+the database on first boot, so there is no manual SQL step.
+
+```bash
+python3 scripts/smoke-test.py http://localhost:8080     # 95 checks across the whole API
+```

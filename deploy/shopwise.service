@@ -1,0 +1,39 @@
+# ---------------------------------------------------------------------------
+# Shopwise — start the container stack on boot, and shut it down cleanly.
+#
+#   scripts/deploy-persistent.sh installs this file, substituting __APP_DIR__
+#   with the checkout path; it is not meant to be copied by hand unedited.
+#
+# Why this exists: `restart: unless-stopped` in docker-compose.yml restarts
+# individual containers, but it can only do that while the Docker daemon is
+# running. Nothing brings the daemon, or the stack, back after a reboot - and a
+# host reboots without being asked when a tier is upgraded, a backup is
+# restored, or the machine is restarted from the management page. Without this
+# unit the site stays down and looks broken.
+# ---------------------------------------------------------------------------
+
+[Unit]
+Description=Shopwise storefront (PostgreSQL + Spring Boot API + nginx)
+Documentation=file://__APP_DIR__/docs/DEPLOYMENT.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=__APP_DIR__
+
+# Compose reads __APP_DIR__/.env automatically, so the secrets stay in that one
+# file rather than being duplicated into this unit.
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose restart
+
+# Image builds and database migrations can take a while; a oneshot unit should
+# not be killed for being slow.
+TimeoutStartSec=0
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

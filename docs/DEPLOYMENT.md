@@ -100,6 +100,116 @@ docker compose logs -f backend                                 # follow applicat
 docker compose exec postgres psql -U shopwise -d shopwise -c '\dt'
 ```
 
+## A permanent deployment
+
+Everything above runs on any machine, but "permanent" is a property of the host, not of the
+containers. Two things have to be true.
+
+1. **The host stays up.** A Manus Sandbox hibernates when idle and its HTTP URL is temporary, so it
+   is the wrong home for a site people rely on. An always-on Linux host is the right one. Check
+   [Resource sizing](#resource-sizing) first — a JVM plus PostgreSQL wants more memory than a static
+   site, and the first image build wants more again.
+2. **The stack comes back by itself after a reboot.** `restart: unless-stopped` in
+   `docker-compose.yml` only restarts *containers*, and only while the Docker daemon is running.
+   Nothing brings the daemon or the stack back after the machine restarts — and the machine restarts
+   without being asked when a tier is upgraded, a backup is restored, or it is restarted from the
+   console. A site that silently stays down after a reboot looks broken. `deploy/shopwise.service`
+   closes that gap.
+
+### One command
+
+Run this from a checkout on the host you intend to keep:
+
+```bash
+git clone https://github.com/ngys9919/manus-react-java-springai-ecommerce.git
+cd manus-react-java-springai-ecommerce
+./scripts/deploy-persistent.sh --dry-run                      # show what it would do
+./scripts/deploy-persistent.sh --origin shop.example.com
+```
+
+It installs Docker if it is missing, generates `.env` with a fresh signing key and database password,
+builds and starts the stack, installs and enables the systemd unit, opens the port if `ufw` is
+active, and waits for the containers to report healthy. On a host without systemd, add
+`--no-systemd`.
+
+It is idempotent, and it never rewrites an existing `.env`: re-running it rebuilds and restarts the
+stack while keeping the signing key and the database password, so sessions and the database
+connection survive a redeploy. Deleting `.env` to "start clean" is a trap — it regenerates the
+password the API presents, but PostgreSQL applies `POSTGRES_PASSWORD` only when it initialises an
+*empty* data directory, so the API is then locked out of a database that already exists.
+
+### Proving that it survives a reboot
+
+Do not take the unit's existence as proof. Reboot and look:
+
+```bash
+systemctl is-enabled shopwise     # enabled
+systemctl status shopwise         # active (exited) — a oneshot unit stays "exited" while up
+sudo reboot
+```
+
+After the machine returns, all three containers should be healthy again and the site should load
+without anyone logging in.
+
+### Opening the port
+
+A Cloud Computer allows only SSH and ICMP through `ufw`, so a service that is running perfectly still
+looks unreachable until the port is opened:
+
+```bash
+sudo ufw allow 80/tcp     # and 443/tcp once TLS is in front
+```
+
+`deploy-persistent.sh` does this for the HTTP port for you. Never expose the other two containers:
+only nginx publishes a port, deliberately — the API and the database are meant to be unreachable
+from outside the Compose network.
+
+### A domain and HTTPS
+
+Plain HTTP is fine for a first look and wrong for anything people sign in to. Point an A record at
+the host's public IP, then terminate TLS in front of the stack. Caddy is the least work:
+
+```bash
+sudo apt-get install -y caddy
+```
+
+```caddyfile
+shop.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+Caddy obtains and renews the certificate itself. With certbot instead:
+
+```bash
+sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo certbot --nginx -d shop.example.com --redirect -m you@example.com --agree-tos
+```
+
+Either way the stack keeps serving plain HTTP on `localhost:8080` and nothing inside the containers
+changes. nginx already sets `X-Forwarded-Proto`, which the backend reads through the standard
+forward-headers support, so generated links come out as `https`.
+
+### Backups, and the one irreversible command
+
+The database is the only stateful component. Automate the dump described under
+[Backups](#backups) instead of relying on remembering it:
+
+```bash
+# /etc/cron.daily/shopwise-backup   (chmod +x)
+#!/bin/sh
+cd /opt/shopwise && docker compose exec -T postgres pg_dump -U shopwise shopwise \
+  | gzip > /var/backups/shopwise-$(date +%F).sql.gz
+find /var/backups -name 'shopwise-*.sql.gz' -mtime +14 -delete
+```
+
+`docker compose down -v` deletes the `shopwise-postgres-data` volume. Treat it as irreversible.
+
+### Traffic is metered on some hosts
+
+Where the host bills for outbound traffic, exhaustion shuts the machine down rather than throttling
+it. On a Cloud Computer, enable auto top-up so a busy day cannot take the site offline.
+
 ## Operating the stack
 
 ```bash
