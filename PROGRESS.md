@@ -62,6 +62,14 @@ and *executes* `.sh` files — an executed script's exports never reach
 `20-envsubst-on-templates.sh`, so the listen port would silently stay at 80.
 Re-ran the full suite against the rebuilt container stack afterwards: **95 passed, 0 failed**.
 
+Checked against Railway's documentation rather than assumed, because the deployment path matters: a
+**project token is not required**. Railway's quick start describes deploying directly from a GitHub
+repository through the dashboard, and states that Railway requires a linked GitHub account and
+prompts for one. The token belongs to the CLI path only. The repository is public, so the Railway
+GitHub App can read it once the account is linked, with no per-repository grant. Two services are
+still needed from the one repository, which their monorepo guide covers as the "isolated monorepo"
+case: set a root directory per service. docs/RAILWAY.md now leads with that path.
+
 ## Findings that shaped the code
 
 1. **Spring Boot 4 uses Jackson 3** (`tools.jackson.*`). `com.fasterxml.jackson.databind.ObjectMapper`

@@ -108,25 +108,44 @@ Nothing to set. Railway provisions the database and exposes `PGHOST`, `PGPORT`, 
 
 ## Deploying
 
-### Option A — the dashboard
+### Option A — from the GitHub repository (no token needed)
 
-1. **Create the project.** On the [Railway dashboard](https://railway.com/dashboard) choose
-   **+ New Project → Empty project**.
-2. **Add the database.** In the project, **+ New → Database → PostgreSQL**. Leave the service name
-   as `Postgres`.
-3. **Add the backend.** **+ New → GitHub Repo**, pick this repository and the `main` branch.
-   Then in the service's **Settings → Build**, set **Root Directory** to `backend`.
-   Railway finds `backend/Dockerfile` and builds it.
-   Set the variables from the table above, and under **Settings → Deployments** set the
-   **Healthcheck Path** to `/actuator/health` with a generous timeout — Flyway migrates and seeds
-   the catalogue on the first boot, which takes longer than a normal start.
-   Do **not** generate a public domain for this service.
-4. **Add the frontend.** **+ New → GitHub Repo**, same repository, **Root Directory** `frontend`.
-   Set `SHOPWISE_API_UPSTREAM`, and set the **Healthcheck Path** to `/healthz`.
-   Then **Settings → Networking → Generate Domain**. That domain is the site.
+This is the path to prefer. Railway deploys straight from a GitHub repository through its dashboard.
+A token is only needed for the CLI, in Option B — so if you do not have one, you do not need one.
 
-Order matters only in this sense: give the database a moment to finish provisioning before the
-backend's first boot, or let the backend restart once. It will not hang — see below.
+Railway requires a GitHub account to be linked and prompts you to link it if it is not already. This
+repository is **public**, so once your account is linked Railway can read it without you granting it
+access to a specific private repository.
+
+Start at the [dashboard](https://railway.com/dashboard): **New Project → Empty project**. An empty
+project rather than the "deploy from GitHub repo" shortcut, because this install needs *two* services
+from the one repository, so a GitHub service is added from the canvas either way.
+
+1. **Add the database first, so the references resolve.** **+ New → Database → PostgreSQL**.
+   Leave the service name as `Postgres` — the backend's variables reference it by that name.
+
+2. **Add the backend.** **+ New → GitHub Repo**, choose
+   `ngys9919/manus-react-java-springai-ecommerce` and the `main` branch.
+   Rename the service to `backend`, then in its **Settings** set **Root Directory** to `backend`.
+   Railway finds `backend/Dockerfile` and builds from it.
+   Under **Variables**, paste the backend block from the table above.
+   Under **Settings → Deployments**, set the **Healthcheck Path** to `/actuator/health` with a
+   generous timeout: Flyway migrates and seeds the catalogue on the first boot, which takes longer
+   than a normal start.
+   **Do not generate a public domain for this service** — it is reached privately.
+
+3. **Add the frontend.** **+ New → GitHub Repo**, same repository. Rename it to `frontend`,
+   set **Root Directory** to `frontend`, and add its one variable
+   (`SHOPWISE_API_UPSTREAM=backend.railway.internal:8080`).
+   Set its **Healthcheck Path** to `/healthz`.
+
+4. **Give the frontend a domain.** On the frontend service, **Settings → Networking →
+   Generate Domain**. That domain is the site; Railway provisions TLS for it automatically.
+   If Railway asks which port to route to, the answer is `80` — or whatever the service logs as its
+   listen port, since it follows `PORT` if the platform sets one.
+
+Railway builds and deploys on every push to `main` from then on. Consider setting **Watch Paths** per
+service (`backend/**` and `frontend/**`) so a change to one does not rebuild the other.
 
 ### Option B — the CLI
 
@@ -233,6 +252,13 @@ as demonstrated. Add your own key to get the full behaviour.
 Platform behaviour changes; these were checked against Railway's own documentation rather than
 assumed:
 
+- [Quick start](https://docs.railway.com/quick-start) — deploying straight from a GitHub repository
+  through the dashboard, and the statement that Railway requires a linked GitHub account and prompts
+  for one. This is why no project token is needed for Option A: the token belongs to the CLI path.
+- [Deploying a monorepo](https://docs.railway.com/deployments/monorepo) — this repository is an
+  *isolated* monorepo, the exact case that document describes as "define a root directory for the
+  service". It also notes a config file does not follow the root directory, which is moot here since
+  no such file is used.
 - [Dockerfiles](https://docs.railway.com/builds/dockerfiles) — Railway uses a `Dockerfile` it finds
   in the source directory, and only injects variables into the build if they are declared with `ARG`.
 - [Deploy a Docker Compose app to production](https://docs.railway.com/guides/docker-compose) — the
