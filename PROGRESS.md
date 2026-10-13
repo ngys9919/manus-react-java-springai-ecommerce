@@ -63,6 +63,14 @@ All confirmed fixed by re-testing.
 | 16 | Three rails on a product page showed almost the same headphones three times | Dropped the "customers also viewed" rail from the page; the endpoint stays for the assistant. Two rails that say different things read as deliberate, three near-identical ones read as broken |
 | 17 | The cart rail showed "Not personalised yet", which is a claim about personalisation, not about thin cross-sell evidence | The fallback pill now appears only on the personalised rail; the others explain themselves in the note instead |
 | 18 | Asked what goes with a named product, the model searched for that product first and put a one-card block above the useful results | Added a prompt rule, and a reply-assembly rule that drops a single-product card block when the same reply also offers a richer set. A single-result search on its own is still shown, because there the card is the answer |
+| 19 | Free-text search matched the query as one phrase, so `TitanForge X16 gaming laptop` and `gaming laptop` both returned nothing while `TitanForge X16` worked. The assistant then told a shopper the store did not stock a product it did | Every word must match somewhere in the product; the words need not be adjacent |
+| 20 | The grounding guard was keyed on the classifier's intent, and the classifier returns `unknown` for "what do people buy with X". The guard was skipped and the model reported a stocked product as absent | A reply that makes a catalogue claim — a negative finding, a stock claim, a price, a SKU — is guarded on its own merits whatever the intent says |
+| 21 | When the guard's retry also declined to call a tool, the ungrounded prose was shown anyway. Asked for a laptop under $2,000 the model said nothing in stock fitted, while two laptops did, and it had called no tool | An ungrounded turn is no longer shown; the reply is built from the catalogue with a notice saying so |
+| 22 | The deterministic responder passed the whole sentence as a search query, so once the guard routed turns to it a plain catalogue question became "I could not match that to something I can look up" | It searches the distinctive words first, then the filters alone |
+| 23 | An empty recommendation was invisible: the tool told the model there was no history and added no block, so a turn with no model prose showed a bare search result and never explained itself | An empty rail emits a notice block |
+| 24 | A recommendation rail was narrated with the search-result wording ("here is what matched"), discarding the reason that makes a rail worth showing | Recommendation rails narrate their own reasons |
+| 25 | The model described a rail with real 55%/38%/28% co-purchase shares as "not much purchase history yet" | Prompt rule forbidding invented thin-evidence hedges |
+| 26 | `hi` and `thanks` classified as `unknown`, because the greeting list contained `"hi "` with a trailing space | Greeting and recommendation phrasing both matched properly |
 
 ## Verified behaviour
 
@@ -73,7 +81,13 @@ comparison rendering, context-aware follow-up, prompt-injection blocking, card r
 
 **Latest run: 88 passed, 0 failed.**
 
-`scripts/capture-screens.py` drives headless Chromium through 22 screens and interactions across
+`scripts/assistant-reco-scenario.py` drives one eight-turn shopper conversation through the
+assistant and reads which tools fired back from the `assistant_event` audit log after every turn,
+rather than trusting the reply text. That is what surfaced bugs 19-26. **Latest run: 28/28**, and
+five of six runs after the fixes were 28/28; the sixth was 22/28, all six failures being the same
+tool-choice variance (documented as a known limitation in `docs/ASSISTANT.md`).
+
+`scripts/capture-screens.py` drives headless Chromium through 24 screens and interactions across
 desktop and mobile viewports, asserts the expected elements render, and reports console errors
 (currently none). Output is in `artifacts/screenshots/`.
 
@@ -81,9 +95,14 @@ desktop and mobile viewports, asserts the expected elements render, and reports 
 
 ```bash
 python3 scripts/smoke-test.py http://localhost:8080                 # 88/88
+python3 scripts/assistant-reco-scenario.py http://localhost:8080    # 28/28
 cd frontend && npx tsc -b && npm run build                          # clean
-python3 scripts/capture-screens.py http://localhost:4173 artifacts/screenshots   # 22/22, 0 console errors
+python3 scripts/capture-screens.py http://localhost:4173 artifacts/screenshots   # 24/24, 0 console errors
 python3 scripts/generate-product-media.py                           # regenerate artwork
+
+# The same suites against the containerised stack (host-network variant: frontend on 8088)
+python3 scripts/smoke-test.py http://127.0.0.1:8088                 # 88/88
+PGPORT=5433 python3 scripts/assistant-reco-scenario.py http://127.0.0.1:8088
 ```
 
 ## Recommendations

@@ -22,6 +22,7 @@ import com.shopwise.web.dto.ChatRequest;
 import com.shopwise.web.dto.ChatResponse;
 import com.shopwise.web.dto.ConversationView;
 import com.shopwise.web.dto.MessageView;
+import com.shopwise.web.dto.ProductSummary;
 import com.shopwise.web.dto.QuickReply;
 import com.shopwise.web.dto.SupportDtos.EscalationRequest;
 import com.shopwise.web.dto.SupportDtos.EscalationView;
@@ -41,6 +42,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 /**
  * The assistant conversation loop.
@@ -59,6 +61,22 @@ import java.util.UUID;
  */
 @Service
 public class AssistantService {
+
+    /**
+     * Phrases that only make sense if the assistant actually consulted the catalogue: a negative
+     * finding, a stock or availability claim, or a quoted price or SKU.
+     *
+     * <p>Used to catch a reply written from memory, which is the failure that can put a wrong price
+     * or a false "we do not stock that" in front of a shopper. Deliberately narrow: it looks for
+     * specific claims rather than at the topic, so ordinary conversation is not pushed through the
+     * catalogue path.</p>
+     */
+    private static final Pattern CATALOGUE_CLAIM = Pattern.compile(
+            "(?i)(couldn'?t find|could not find|can'?t find|cannot find|not in (?:the )?(?:catalogue|catalog|store)"
+          + "|we (?:don'?t|do not) (?:have|stock|sell)|nothing (?:in stock|fits|matches|available)"
+          + "|no products?|(?:is|are)n'?t (?:available|in stock)|(?:is|are) not (?:available|in stock)"
+          + "|\\bsku-\\d{4}\\b|\\$\\s?\\d)");
+
 
     private static final Logger log = LoggerFactory.getLogger(AssistantService.class);
 
@@ -251,6 +269,7 @@ public class AssistantService {
         String unavailable = runtime.unavailableReason();
         AssistantRuntime.LlmResult result;
         String degradedReason = null;
+        boolean ungrounded = false;
 
         if (unavailable != null) {
             result = AssistantRuntime.LlmResult.failed(unavailable, runtime.modelName(), 0);
@@ -261,9 +280,19 @@ public class AssistantService {
 
             // Grounding guard: a catalogue question answered from memory rather than from the
             // catalogue is the one failure that can put a wrong price in front of a shopper.
-            // One nudge is enough; if the model still will not use a tool we keep its prose and
-            // let the deterministic path below decide what to do.
-            if (result.ok() && blocks.isEmpty() && needsGrounding(classification.intent())) {
+            // One nudge is enough to try; if the model still will not use a tool, the prose is
+            // not shown at all.
+            //
+            // The classifier is a keyword matcher and does not recognise every way of asking about
+            // a product, so the guard cannot rely on it alone: asked "what do people usually buy
+            // together with the TitanForge X16?" the intent came back "unknown", the guard was
+            // skipped, and the model told the shopper the product was not in the store while it
+            // was. A reply that makes a claim about the catalogue is therefore guarded on its own
+            // merits, whatever the intent says.
+            boolean catalogueClaim = result.ok() && blocks.isEmpty()
+                    && (needsGrounding(classification.intent())
+                        || CATALOGUE_CLAIM.matcher(result.text() == null ? "" : result.text()).find());
+            if (catalogueClaim) {
                 log.info("Assistant answered a {} turn without a tool call; retrying once with a nudge",
                         classification.intent());
                 AssistantRuntime.LlmResult retry = runtime.converse(
@@ -272,6 +301,17 @@ public class AssistantService {
                         history, safeMessage, tools, toolContext);
                 if (retry.ok()) {
                     result = retry;
+                }
+                // The nudge is not always enough. An answer that names products or quotes prices
+                // without having read them is worse than a plainer answer built from the
+                // catalogue, so an ungrounded turn is handed to the deterministic responder
+                // instead of being shown as-is. Observed in testing: asked for a laptop under
+                // $2,000, the model reported that nothing in stock fit the budget, while two
+                // laptops did, and it had called no tool at all.
+                ungrounded = blocks.isEmpty();
+                if (ungrounded) {
+                    log.info("Assistant still answered a {} turn without a tool call; "
+                            + "answering from the catalogue instead", classification.intent());
                 }
             }
 
@@ -286,7 +326,14 @@ public class AssistantService {
         boolean escalated = false;
         boolean degraded = degradedReason != null;
 
-        if (result.ok()) {
+        if (ungrounded) {
+            // The model's prose described a catalogue it never read, so it is discarded rather than
+            // shown: a confident wrong price is worse than a plainer, grounded answer.
+            degradedReason = "That question needed the live catalogue and the assistant did not consult it.";
+            degraded = true;
+        }
+
+        if (result.ok() && !ungrounded) {
             replyText = result.text();
             quickReplies.addAll(collectReplies(replyBlocks));
         } else if (result.empty() && !replyBlocks.isEmpty()) {
@@ -300,6 +347,9 @@ public class AssistantService {
             degraded = true;
             degradedReason = result.failureReason();
         } else {
+            // Either the model call failed or the turn could not be grounded: both need an answer
+            // built from the catalogue rather than from the model.
+            degraded = true;
             analyticsService.record(conversation.getId(), actor.userId(), AssistantEvent.Type.FALLBACK_TRIGGERED,
                     classification.intent(), null, "fallback", null, Map.of("reason", degradedReason));
             analyticsService.record(conversation.getId(), actor.userId(), AssistantEvent.Type.ASSISTANT_ERROR,
@@ -311,8 +361,11 @@ public class AssistantService {
             replyBlocks = new ArrayList<>(answer.blocks());
             quickReplies.addAll(answer.quickReplies());
             escalated = answer.escalated();
-            replyBlocks.add(0, ChatBlock.notice("Offline answer",
-                    degradedReason + " I answered from the catalogue rules instead.", "warning"));
+            replyBlocks.add(0, ungrounded
+                    ? ChatBlock.notice("Answered from the catalogue",
+                            degradedReason + " I answered from the catalogue itself instead.", "warning")
+                    : ChatBlock.notice("Offline answer",
+                            degradedReason + " I answered from the catalogue rules instead.", "warning"));
         }
 
         replyBlocks = pruneRedundantCardBlocks(replyBlocks);
@@ -517,6 +570,10 @@ public class AssistantService {
             return "Here is the side-by-side. The rows marked \"differs\" are where they diverge — "
                     + "tell me which trade-off matters more and I will pick one.";
         }
+        String recommendation = narrateRecommendation(blocks);
+        if (recommendation != null) {
+            return recommendation;
+        }
         if (hasBlock(blocks, ChatBlock.TYPE_PRODUCT_CARDS)) {
             return "Here is what matched. Ask me to compare any two, or say which one to look at in detail.";
         }
@@ -527,6 +584,57 @@ public class AssistantService {
             return "Here is your cart as it stands.";
         }
         return "Here is what I found.";
+    }
+
+    /**
+     * Describes a recommendation rail using the reasons the engine attached to each product.
+     *
+     * <p>A recommendation is only useful if the shopper can see why it was made, so when the model
+     * adds no prose the fallback sentence has to carry those reasons itself. The generic "here is
+     * what matched" wording is right for a search result and wrong for a rail: it drops the one
+     * thing that distinguishes "55% of buyers also bought this" from an advert.</p>
+     *
+     * @return the sentence, or {@code null} when no block in the reply is a recommendation rail
+     */
+    private String narrateRecommendation(List<ChatBlock> blocks) {
+        for (ChatBlock block : blocks) {
+            if (!ChatBlock.TYPE_PRODUCT_CARDS.equals(block.type()) || block.data() == null) {
+                continue;
+            }
+            if (!(block.data().get("reasons") instanceof List<?> reasons) || reasons.isEmpty()) {
+                continue;
+            }
+            Map<String, String> names = new LinkedHashMap<>();
+            if (block.data().get("products") instanceof List<?> products) {
+                for (Object candidate : products) {
+                    if (candidate instanceof ProductSummary summary) {
+                        names.put(summary.sku(), summary.name());
+                    }
+                }
+            }
+            List<String> parts = new ArrayList<>();
+            for (Object entry : reasons) {
+                if (parts.size() == 3) {
+                    break;
+                }
+                if (entry instanceof Map<?, ?> reason) {
+                    String name = names.get(String.valueOf(reason.get("sku")));
+                    Object why = reason.get("reason");
+                    if (name != null && why != null) {
+                        parts.add(name + " \u2014 " + why);
+                    }
+                }
+            }
+            if (parts.isEmpty()) {
+                continue;
+            }
+            String heading = block.subtitle() == null || block.subtitle().isBlank()
+                    ? "Here is what the catalogue suggests"
+                    : block.subtitle();
+            String note = block.body() == null || block.body().isBlank() ? "" : " " + block.body();
+            return heading + ". " + String.join("; ", parts) + "." + note;
+        }
+        return null;
     }
 
     /**

@@ -24,6 +24,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -46,6 +47,19 @@ public class FallbackResponder {
             boolean escalated,
             String reason) {
     }
+
+    /**
+     * Words that carry no catalogue meaning in a shopping question. Every remaining word has to
+     * match a product, so passing the shopper's sentence straight through would match nothing.
+     */
+    private static final Set<String> FILLER = Set.of(
+            "i", "we", "my", "me", "a", "an", "the", "for", "to", "of", "in", "on", "at", "is", "are",
+            "am", "be", "can", "could", "would", "should", "want", "need", "needs", "looking", "look",
+            "get", "got", "buy", "buying", "have", "has", "had", "do", "does", "did", "what", "which",
+            "that", "this", "these", "those", "with", "and", "or", "but", "under", "over", "around",
+            "about", "please", "help", "some", "any", "it", "you", "your", "good", "best", "better",
+            "recommend", "recommendation", "suggest", "show", "find", "something", "anything", "home",
+            "new", "really", "just", "also", "from", "than", "then", "there", "here", "how", "why");
 
     private final CatalogService catalogService;
     private final CartService cartService;
@@ -104,9 +118,21 @@ public class FallbackResponder {
 
     private Answer search(ActorContext actor, String message, Classification classification,
                           List<ChatBlock> blocks, List<QuickReply> replies, String reason) {
+        String category = classification.entityString("category");
+        BigDecimal budget = classification.entityDecimal("budget");
+
+        // Try the distinctive words from the question first, then the filters alone.
+        //
+        // The second attempt is what makes this work for a request like "what laptop for 4K video
+        // editing under $2,000": no product mentions editing, but the category and the budget are
+        // exactly the right filters, and answering with the laptops that fit is far better than
+        // reporting that nothing matched.
+        String terms = searchTerms(message);
         List<ProductSummary> products = catalogService.searchForAssistant(
-                message, classification.entityString("category"),
-                null, classification.entityDecimal("budget"), true, 3);
+                terms, category, null, budget, true, 3);
+        if (products.isEmpty() && terms != null) {
+            products = catalogService.searchForAssistant(null, category, null, budget, true, 3);
+        }
 
         if (products.isEmpty()) {
             return unknown(message, blocks, replies, reason);
@@ -114,6 +140,24 @@ public class FallbackResponder {
         blocks.add(productCards("Matching products", products, replies));
         return new Answer(summarise("I found these in the catalogue:", products), blocks, replies,
                 "product_search", false, reason);
+    }
+
+    /**
+     * The most distinctive words in the question, longest-lived first, or {@code null} when the
+     * question is entirely filler.
+     */
+    private String searchTerms(String message) {
+        List<String> terms = new ArrayList<>();
+        for (String word : message.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^a-z0-9\\s-]", " ").split("\\s+")) {
+            if (word.length() >= 3 && !FILLER.contains(word)) {
+                terms.add(word);
+            }
+            if (terms.size() == 3) {
+                break;
+            }
+        }
+        return terms.isEmpty() ? null : String.join(" ", terms);
     }
 
     private Answer recommend(ActorContext actor, String message, Classification classification,

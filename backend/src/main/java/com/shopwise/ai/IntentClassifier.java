@@ -41,6 +41,8 @@ public class IntentClassifier {
     private static final Pattern SKU = Pattern.compile("\\bSKU-\\d{4}\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern EMAIL = Pattern.compile("[\\w.+-]+@[\\w-]+\\.[\\w.]{2,}");
     private static final Pattern DOLLAR = Pattern.compile("\\$\\s?([\\d,]+(?:\\.\\d{1,2})?)");
+    private static final Pattern GREETING = Pattern.compile("hi|hiya|hey|hello|yo|thanks|thank you");
+
     private static final Pattern BUDGET = Pattern.compile(
             "(?:under|below|less than|max(?:imum)?(?: of)?|budget(?: of)?|up to|around|about)\\s*\\$?\\s*([\\d,]+)",
             Pattern.CASE_INSENSITIVE);
@@ -127,8 +129,13 @@ public class IntentClassifier {
         if (containsAny(message, "discount", "on sale", "offer", "cheaper", "price drop", "deal", "promo")) {
             return new Classification("price_check", 0.8, entities);
         }
+        // "What do people usually buy together with X", "what goes with X" and "what else should I
+        // consider" are recommendation questions, but they share no wording with "which is best",
+        // so they used to fall through to "unknown" and lose the intent signal the prompt uses.
         if (containsAny(message, "best", "recommend", "suggest", "which should i", "what should i buy", "good for",
-                "ideal for", "looking for")) {
+                "ideal for", "looking for", "buy together", "buy with", "bought together", "goes with",
+                "go well with", "go with", "pair with", "pairs with", "accessor", "complement",
+                "what else", "anything else", "other people buy", "people buy", "usually buy")) {
             return new Classification("product_recommend", 0.8, entities);
         }
         if (containsAny(message, "how much", "price of", "cost of", "what does it cost")) {
@@ -146,8 +153,9 @@ public class IntentClassifier {
         if (entities.containsKey("category") || entities.containsKey("budget")) {
             return new Classification("product_search", 0.7, entities);
         }
-        if (containsAny(message, "what can you", "help me", "how does this work", "who are you", "hello", "hi ",
-                "hey", "good morning", "good afternoon")) {
+        if (containsAny(message, "what can you", "help me", "how does this work", "who are you", "hello",
+                "hey", "good morning", "good afternoon", "thanks", "thank you")
+                || GREETING.matcher(message).matches()) {
             return new Classification("general_help", 0.8, entities);
         }
         return new Classification("unknown", 0.35, entities);

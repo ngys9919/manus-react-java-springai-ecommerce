@@ -249,3 +249,32 @@ shopwise:
       redact-payment-data: true
       outbound-screening: true
 ```
+
+## 12. What testing the recommendation tool found
+
+`scripts/assistant-reco-scenario.py` drives one eight-turn shopper conversation — a cold start, an
+open-ended ask, browsing, a named product, a follow-up that depends on the previous answer, a
+question about a product with no purchase history, and a prompt injection — and after every turn
+reads which tools fired out of the `assistant_event` audit log. Checking the audit log rather than
+the reply text is what made the following defects visible; every one of them had passed a
+reply-reading test, because a reply that *sounds* grounded is indistinguishable from one that is.
+
+| Defect | Why it mattered | Fix |
+| --- | --- | --- |
+| Free-text search matched the query as a single phrase | `TitanForge X16` found the product, `TitanForge X16 gaming laptop` found nothing, and `gaming laptop` found nothing at all. The assistant then told the shopper the store did not stock a product it did | Search now requires every word to match somewhere in the product, without requiring them to be adjacent |
+| The grounding guard only covered intents the classifier recognised | Asked what people buy with a named product, the classifier returned `unknown`, the guard was skipped, and the model reported the product as absent while it was in the catalogue | A reply that makes a catalogue claim — a negative finding, a stock claim, a price or a SKU — is now guarded on its own merits, whatever the intent says |
+| The guard showed the model's prose when the retry also declined to call a tool | The nudge was treated as sufficient. Asked for a laptop under $2,000 the model said nothing in stock fitted, while two laptops did, and it had called no tool | An ungrounded turn is no longer shown: the reply is built from the catalogue instead, with a notice saying so |
+| The deterministic responder passed the shopper's whole sentence as a search query | Once the guard began routing turns to it, a plain catalogue question came back as "I could not match that to something I can look up" | It now searches on the distinctive words, then on the filters alone, so "laptop for 4K editing under $2,000" answers with the laptops that fit |
+| An empty recommendation was invisible | When there was no purchase history the tool returned a message to the model and nothing else. If the model added no prose the shopper saw only a bare search result and never learned why | An empty rail now emits a notice block, so the explanation reaches the shopper regardless of what the model does |
+| The fallback sentence was written for search results | A recommendation rail narrated as "here is what matched", which throws away the one thing that makes a rail worth showing: "55% of buyers also bought this" | Recommendation rails narrate their own reasons |
+| The model hedged about missing evidence it had | It described a rail with real 55%/38%/28% co-purchase shares as "there is not much purchase history yet", making a well-supported recommendation look like a guess | The prompt now forbids inventing thin-evidence hedges: report the reason the tool gave |
+| `hi` and `thanks` classified as `unknown` | The greeting trigger list contained `"hi "` with a trailing space, so a bare `hi` never matched | Greeting and recommendation phrasing both matched properly |
+
+**Known limitation.** Turns 5–7 still vary between runs: in roughly one run in six the model answers
+a recommendation question with a plain catalogue search instead of calling `recommend_products`.
+The reply stays honest in that case, but the rail is missing. The guard cannot catch it, because a
+search *did* run and the turn is therefore grounded — the shortfall is one of tool choice, not of
+grounding, and is left as a model-behaviour limitation rather than papered over.
+
+Across six runs of the scenario, five passed 28/28 and one passed 22/28, all six failures being the
+tool-choice variance above.

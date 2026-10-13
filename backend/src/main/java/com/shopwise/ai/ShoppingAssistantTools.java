@@ -180,6 +180,13 @@ public class ShoppingAssistantTools {
                 "results", rail.items().size()));
 
         if (rail.items().isEmpty()) {
+            // The explanation reaches the shopper as a block as well as a message, because "no
+            // recommendation" with no reason reads as the assistant having forgotten the question.
+            // Relying on the model to relay it means the shopper learns nothing whenever the model
+            // happens to answer with no prose.
+            blocks(toolContext).add(ChatBlock.notice("Not enough history yet",
+                    "There is not enough shopping history for that yet. I can search the catalogue "
+                            + "from the specs instead if you tell me what matters.", "info"));
             return Map.of(
                     "results", List.of(),
                     "message", "There is not enough shopping history for that yet. "

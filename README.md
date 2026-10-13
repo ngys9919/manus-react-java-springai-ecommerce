@@ -182,6 +182,10 @@ Diagram sources: [`artifacts/architecture.mmd`](artifacts/architecture.mmd) (Mer
 # moderation, escalation, recommendations, analytics, OpenAPI
 python3 scripts/smoke-test.py http://localhost:8080
 
+# Drive one realistic shopper conversation through the assistant and check what each turn
+# actually did, reading the tool calls back from the audit log rather than trusting the reply
+python3 scripts/assistant-reco-scenario.py http://localhost:8080
+
 # Regenerate branded product artwork from the seeded catalogue
 python3 scripts/generate-product-media.py
 
@@ -198,8 +202,15 @@ Latest results in this environment:
 | Suite | Result |
 | --- | --- |
 | `scripts/smoke-test.py` (API, end to end) | **88 / 88 passing** |
+| `scripts/assistant-reco-scenario.py` (8-turn shopper conversation) | **28 / 28 passing** |
 | `npx tsc -b && npm run build` | Clean, no type errors |
-| `scripts/capture-screens.py` (22 UI screens, desktop + mobile) | 22 / 22 captured, **0 console errors** |
+| `scripts/capture-screens.py` (24 UI screens, desktop + mobile) | 24 / 24 captured, **0 console errors** |
+
+The scenario script is the more interesting of the two. It runs a shopper from a cold start to a
+deliberate prompt injection, and after every turn it reads which tools fired out of the
+`assistant_event` audit log. A turn that merely *sounds* like it used `recommend_products` fails if
+it did not call it, which is how the defects listed in
+[`docs/ASSISTANT.md`](docs/ASSISTANT.md#12-what-testing-the-recommendation-tool-found) were found.
 
 ### Screenshots
 
@@ -267,3 +278,5 @@ nginx reverse proxy. Full details, including TLS, backups and troubleshooting, a
 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### From source
+| `23-assistant-recommendations.png` | The assistant answering "what do people buy with the Aurora Book Pro 14", with the rail's reasons and the tool chips showing `recommend_products` ran |
+| `24-assistant-recommendation-refusal.png` | The same question about a product with no co-purchase history: the tool refuses and says why |

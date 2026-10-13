@@ -103,14 +103,23 @@ public class CatalogService {
                 predicates.add(builder.greaterThan(root.get("stockQuantity"), 0));
             }
             if (query != null && !query.isBlank()) {
-                String like = "%" + query.trim().toLowerCase(Locale.ROOT) + "%";
-                predicates.add(builder.or(
-                        builder.like(builder.lower(root.get("name")), like),
-                        builder.like(builder.lower(root.get("brand")), like),
-                        builder.like(builder.lower(root.get("shortDescription")), like),
-                        builder.like(builder.lower(root.get("tags")), like),
-                        builder.like(builder.lower(root.get("sku")), like),
-                        builder.like(builder.lower(root.get("category").get("name")), like)));
+                // Every word must match somewhere; the words need not be adjacent. Matching the
+                // query as one phrase meant "TitanForge X16 gaming laptop" found nothing while
+                // "TitanForge X16" found the product, so one extra descriptive word was enough to
+                // make the shopper think the catalogue did not stock it.
+                for (String term : query.trim().toLowerCase(Locale.ROOT).split("\\s+")) {
+                    if (term.isEmpty()) {
+                        continue;
+                    }
+                    String like = "%" + term + "%";
+                    predicates.add(builder.or(
+                            builder.like(builder.lower(root.get("name")), like),
+                            builder.like(builder.lower(root.get("brand")), like),
+                            builder.like(builder.lower(root.get("shortDescription")), like),
+                            builder.like(builder.lower(root.get("tags")), like),
+                            builder.like(builder.lower(root.get("sku")), like),
+                            builder.like(builder.lower(root.get("category").get("name")), like)));
+                }
             }
             return builder.and(predicates.toArray(new Predicate[0]));
         };

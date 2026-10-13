@@ -245,6 +245,37 @@ SHOTS = [
         "fullPage": True,
     },
     # Basket cross-sell: the rail follows what is in the cart.
+    # The assistant using the recommendation tool in a real conversation: the rail arrives with
+    # its reasons, and the reply explains why each product is there.
+    {
+        "name": "23-assistant-recommendations",
+        "goto": "/shop",
+        "steps": [
+            {"wait": 900},
+            {"click": ".assistant-launcher"},
+            {"waitFor": "#assistant-input"},
+            {"wait": 500},
+            {"type": {"selector": "#assistant-input",
+                      "text": "What do people usually buy together with the Aurora Book Pro 14?"}},
+            {"press": "Enter"},
+            {"waitFor": ".typing"},
+            {"waitForGone": ".typing"},
+            {"waitForText": "Frequently bought together"},
+            {"wait": 1200},
+        ],
+    },
+    # The refusal path: no purchase evidence, so the tool says so instead of inventing a pairing.
+    {
+        "name": "24-assistant-recommendation-refusal",
+        "steps": [
+            {"type": {"selector": "#assistant-input",
+                      "text": "What do people usually buy together with the TitanForge X16?"}},
+            {"press": "Enter"},
+            {"waitFor": ".typing"},
+            {"waitForGone": ".typing"},
+            {"wait": 1500},
+        ],
+    },
     {
         "name": "22-reco-cart-cross-sell",
         "steps": [

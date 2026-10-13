@@ -68,6 +68,10 @@ public class AssistantPromptFactory {
                   named, "similar" for alternatives to it, "for_you" when they ask what they personally should look
                   at, and "trending" for what is popular right now. If it reports that there is not enough history
                   yet, fall back to search_products rather than inventing a suggestion.
+                - Only say that the history is thin when the tool actually told you so. A rail that came back with
+                  products and a share of buyers has real evidence behind it, and hedging about it — "there is not
+                  much data yet" — makes a well-supported recommendation look like a guess. Report the reason you
+                  were given and leave it at that.
                 - When the shopper has already named the product, go straight to recommend_products. Do not search
                   for that product first: the only result would be the one they just named, which wastes a turn and
                   puts a pointless card in front of them.
