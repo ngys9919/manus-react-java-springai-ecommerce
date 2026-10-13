@@ -71,6 +71,10 @@ All confirmed fixed by re-testing.
 | 24 | A recommendation rail was narrated with the search-result wording ("here is what matched"), discarding the reason that makes a rail worth showing | Recommendation rails narrate their own reasons |
 | 25 | The model described a rail with real 55%/38%/28% co-purchase shares as "not much purchase history yet" | Prompt rule forbidding invented thin-evidence hedges |
 | 26 | `hi` and `thanks` classified as `unknown`, because the greeting list contained `"hi "` with a trailing space | Greeting and recommendation phrasing both matched properly |
+| 27 | **Reported by the user.** Clicking a conversation starter in the assistant failed with "That did not go through. The request could not be completed." The backend answered the same message correctly over curl, so the suite was green while the browser was broken | See 28 and 29 - two independent causes, and the visible one was the second |
+| 28 | Every mutating request from a browser returned `403 Invalid CORS request`. The backend only accepted the browser's `Origin` when it matched the request's own authority, but the Vite preview proxy sets `changeOrigin: true` and rewrites `Host` to its target, so the backend saw `localhost:8080` while the browser sent the public hostname and the two could never match. GETs are unaffected (browsers omit `Origin` on same-origin GETs), which is why the storefront loaded and only sending failed | Added `shopwise.security.allowed-origin-patterns` (wildcards, `SHOPWISE_ALLOWED_ORIGIN_PATTERNS`), wired through `setAllowedOriginPatterns`, and logged every rejection with the origin, `Host` and `X-Forwarded-Host` so the next occurrence is a log line rather than a browser-side mystery |
+| 29 | `FallbackResponder.recommend` passed the shopper's whole sentence as the search query. `search` had been fixed for this; `recommend` had not, so "What is the best camera for travel?" - a starter the assistant itself offers - answered "I could not match that to something I can look up" whenever the model declined to call a tool | Both paths now share one `productsFor` helper: distinctive words first, then the filters alone |
+| 30 | A new visitor's first page view could return `500` with `duplicate key value violates unique constraint "uq_cart_guest_active"`. `CartService.resolveCart` read then inserted, and the cart view, the assistant and the recommendation rails all fire together | `CartRepository.insertActiveGuestCartIfAbsent` / `insertActiveUserCartIfAbsent` create the cart as a single `INSERT ... ON CONFLICT DO NOTHING`, which removes the race rather than catching it (a caught violation would already have marked the transaction rollback-only). Verified with 16 simultaneous first-time requests on one token |
 
 ## Verified behaviour
 
@@ -79,7 +83,8 @@ checkout, order-tracking permissions, authentication, role-gated analytics, the 
 comparison rendering, context-aware follow-up, prompt-injection blocking, card redaction, escalation,
 `/resume`, feedback, transcript ownership, analytics aggregation and the OpenAPI document.
 
-**Latest run: 88 passed, 0 failed.**
+**Latest run: 94 passed, 0 failed** (88 + 6 CORS checks added by bug 28), and 93/93 against the
+container stack, where the opt-in deployed-origin check does not run.
 
 `scripts/assistant-reco-scenario.py` drives one eight-turn shopper conversation through the
 assistant and reads which tools fired back from the `assistant_event` audit log after every turn,
@@ -94,7 +99,9 @@ desktop and mobile viewports, asserts the expected elements render, and reports 
 ## Verification commands
 
 ```bash
-python3 scripts/smoke-test.py http://localhost:8080                 # 88/88
+python3 scripts/smoke-test.py http://localhost:8080                 # 94/94
+# ...and with the deployment's own hostname, which is the check that reproduces bug 28:
+SHOPWISE_TEST_ORIGIN=https://your-host.example.com python3 scripts/smoke-test.py http://localhost:8080
 python3 scripts/assistant-reco-scenario.py http://localhost:8080    # 28/28
 cd frontend && npx tsc -b && npm run build                          # clean
 python3 scripts/capture-screens.py http://localhost:4173 artifacts/screenshots   # 24/24, 0 console errors

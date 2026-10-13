@@ -35,6 +35,27 @@ public class ShopwiseProperties {
                 "http://localhost:4173"));
 
         /**
+         * Origin allow-list entries that may contain wildcards, matched by Spring's
+         * {@code setAllowedOriginPatterns}.
+         *
+         * <p>This exists because the same-origin rule cannot be evaluated behind a proxy that
+         * rewrites the {@code Host} header: the browser's Origin names the public hostname while
+         * the backend only sees the proxy's internal target, so the two can never be compared.
+         * A deployment reachable at a hostname it cannot otherwise learn - a generated sandbox
+         * hostname, an ephemeral preview URL - declares it here instead:</p>
+         *
+         * <pre>SHOPWISE_ALLOWED_ORIGIN_PATTERNS=https://*.example.com,http://localhost:[*]</pre>
+         *
+         * <p>Prefer an exact {@code allowedOrigins} entry where the hostname is known. Note that
+         * these patterns are matched only against the {@code Origin} header, and authorization is
+         * still enforced by the token filter, so a permitted origin gains no access it could not
+         * already obtain by replaying a request without a browser.</p>
+         */
+        private List<String> allowedOriginPatterns = new ArrayList<>(List.of(
+                "http://localhost:[*]",
+                "http://127.0.0.1:[*]"));
+
+        /**
          * Accept a request whose Origin is the same host the browser is already talking to.
          *
          * <p>The Docker deployment serves the storefront and the API from one origin, with nginx

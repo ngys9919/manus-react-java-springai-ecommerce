@@ -192,6 +192,10 @@ python3 scripts/generate-product-media.py
 # Drive the UI in a headless browser and capture screenshots
 python3 scripts/capture-screens.py http://localhost:4173 artifacts/screenshots
 
+# Verify the deployment's own hostname is accepted as an origin (every mutating request is a
+# POST, and a browser sends Origin on those, so a missing allow-list entry breaks the whole app
+SHOPWISE_TEST_ORIGIN=https://your-host.example.com python3 scripts/smoke-test.py http://localhost:8080
+
 # Gate a push on credential detection
 python3 scripts/secret-scan.py            # working tree
 python3 scripts/secret-scan.py --staged   # staged files only, for a pre-push hook
@@ -201,7 +205,7 @@ Latest results in this environment:
 
 | Suite | Result |
 | --- | --- |
-| `scripts/smoke-test.py` (API, end to end) | **88 / 88 passing** |
+| `scripts/smoke-test.py` (API, end to end) | **94 / 94 passing** |
 | `scripts/assistant-reco-scenario.py` (8-turn shopper conversation) | **28 / 28 passing** |
 | `npx tsc -b && npm run build` | Clean, no type errors |
 | `scripts/capture-screens.py` (24 UI screens, desktop + mobile) | 24 / 24 captured, **0 console errors** |

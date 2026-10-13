@@ -9,6 +9,7 @@ Usage:  python3 scripts/smoke-test.py [base_url]
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -20,12 +21,14 @@ GUEST = f"smoke-{uuid.uuid4().hex[:12]}"
 PASS, FAIL = [], []
 
 
-def call(method: str, path: str, body=None, token=None, guest=GUEST, timeout=180):
+def call(method: str, path: str, body=None, token=None, guest=GUEST, timeout=180, origin=None):
     url = f"{BASE}{path}"
     data = json.dumps(body).encode() if body is not None else None
     request = urllib.request.Request(url, data=data, method=method)
     request.add_header("Content-Type", "application/json")
     request.add_header("X-Guest-Token", guest)
+    if origin:
+        request.add_header("Origin", origin)
     if token:
         request.add_header("Authorization", f"Bearer {token}")
     try:
@@ -331,6 +334,39 @@ check("assistant does not repeat the named product as a card",
       all(not (b.get("type") == "PRODUCT_CARDS" and len(b.get("data", {}).get("products", [])) == 1)
           for b in blocks),
       f"blocks={[b.get('title') for b in blocks]}")
+
+# --------------------------------------------------------------------- CORS
+#
+# A browser attaches Origin to every mutating request, so the assistant's very first message is a
+# POST that is subject to CORS. Nothing else here sends an Origin, which is how a deployment broke
+# in a way this suite could not see: the proxy rewrote Host, the same-origin check had nothing to
+# compare the Origin against, and every POST - sign in, cart, checkout, the assistant - returned
+# 403 "Invalid CORS request" while the whole suite stayed green. These checks send the header.
+section("CORS")
+BAD = {"email": "x@y.z", "password": "nope"}
+
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="http://localhost:4173")
+check("origin from the allowlist accepted", status != 403, f"status={status}")
+
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="http://localhost:9999")
+check("origin covered by a pattern accepted", status != 403, f"status={status}")
+
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="https://evil.example.com")
+check("unknown origin rejected", status == 403, f"status={status}")
+
+status, _ = call("POST", "/api/v1/auth/login", BAD, origin="null")
+check("opaque origin rejected", status == 403, f"status={status}")
+
+status, _ = call("OPTIONS", "/api/v1/assistant/chat", origin="http://localhost:4173")
+check("preflight answered", status in (200, 204), f"status={status}")
+
+# The hostname the app is actually served from, when it is not one of the defaults. This is the
+# check that reproduces a real deployment, and it is opt-in because the hostname is not known here:
+#   SHOPWISE_TEST_ORIGIN=https://my-host.example.com python3 scripts/smoke-test.py <url>
+deployed = os.environ.get("SHOPWISE_TEST_ORIGIN")
+if deployed:
+    status, _ = call("POST", "/api/v1/auth/login", BAD, origin=deployed)
+    check(f"deployed origin accepted ({deployed})", status != 403, f"status={status}")
 
 # -------------------------------------------------------------------- docs
 section("Documentation")

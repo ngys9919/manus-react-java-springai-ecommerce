@@ -64,6 +64,13 @@ services:
       #   generate one with:  openssl rand -base64 48
       SHOPWISE_JWT_SECRET: "${SHOPWISE_JWT_SECRET:?SHOPWISE_JWT_SECRET is required - generate one with openssl rand -base64 48}"
 
+      # --- browser origins
+      # The hostname the storefront is opened at, when it is not localhost. The
+      # compose default serves the app on http://localhost:8080, which the
+      # same-origin rule already accepts; put the real hostname here for any
+      # other deployment, or every mutating request returns 403.
+      SHOPWISE_ALLOWED_ORIGIN_PATTERNS: "${SHOPWISE_ALLOWED_ORIGIN_PATTERNS:-http://localhost:[*],http://127.0.0.1:[*]}"
+
       # --- model access
       # Omit the key and the stack still starts: the assistant falls back to
       # deterministic catalogue answers and says so in the UI.

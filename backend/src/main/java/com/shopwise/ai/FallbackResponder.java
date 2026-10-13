@@ -118,21 +118,7 @@ public class FallbackResponder {
 
     private Answer search(ActorContext actor, String message, Classification classification,
                           List<ChatBlock> blocks, List<QuickReply> replies, String reason) {
-        String category = classification.entityString("category");
-        BigDecimal budget = classification.entityDecimal("budget");
-
-        // Try the distinctive words from the question first, then the filters alone.
-        //
-        // The second attempt is what makes this work for a request like "what laptop for 4K video
-        // editing under $2,000": no product mentions editing, but the category and the budget are
-        // exactly the right filters, and answering with the laptops that fit is far better than
-        // reporting that nothing matched.
-        String terms = searchTerms(message);
-        List<ProductSummary> products = catalogService.searchForAssistant(
-                terms, category, null, budget, true, 3);
-        if (products.isEmpty() && terms != null) {
-            products = catalogService.searchForAssistant(null, category, null, budget, true, 3);
-        }
+        List<ProductSummary> products = productsFor(message, classification);
 
         if (products.isEmpty()) {
             return unknown(message, blocks, replies, reason);
@@ -140,6 +126,33 @@ public class FallbackResponder {
         blocks.add(productCards("Matching products", products, replies));
         return new Answer(summarise("I found these in the catalogue:", products), blocks, replies,
                 "product_search", false, reason);
+    }
+
+    /**
+     * Products for a question, trying the distinctive words first and then the filters alone.
+     *
+     * <p>The second attempt is what makes this work for a request like "what laptop for 4K video
+     * editing under $2,000": no product mentions editing, but the category and the budget are
+     * exactly the right filters, and answering with the laptops that fit is far better than
+     * reporting that nothing matched.</p>
+     *
+     * <p>Both the search and the recommendation paths go through here. They did not, and the
+     * omission was invisible until a question reached the recommendation path: passing the whole
+     * sentence as a query matches nothing, so "what is the best camera for travel?" - one of the
+     * starters the assistant itself suggests - answered with "I could not match that to something
+     * I can look up".</p>
+     */
+    private List<ProductSummary> productsFor(String message, Classification classification) {
+        String category = classification.entityString("category");
+        BigDecimal budget = classification.entityDecimal("budget");
+
+        String terms = searchTerms(message);
+        List<ProductSummary> products = catalogService.searchForAssistant(
+                terms, category, null, budget, true, 3);
+        if (products.isEmpty() && terms != null) {
+            products = catalogService.searchForAssistant(null, category, null, budget, true, 3);
+        }
+        return products;
     }
 
     /**
@@ -162,9 +175,7 @@ public class FallbackResponder {
 
     private Answer recommend(ActorContext actor, String message, Classification classification,
                              List<ChatBlock> blocks, List<QuickReply> replies, String reason) {
-        List<ProductSummary> products = catalogService.searchForAssistant(
-                message, classification.entityString("category"),
-                null, classification.entityDecimal("budget"), true, 3);
+        List<ProductSummary> products = productsFor(message, classification);
 
         if (products.isEmpty()) {
             return unknown(message, blocks, replies, reason);

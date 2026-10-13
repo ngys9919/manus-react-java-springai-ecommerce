@@ -89,6 +89,12 @@ shopwise:
       - http://127.0.0.1:5173
       - http://localhost:4173
       - http://127.0.0.1:4173
+    # Wildcard-capable entries, matched against the browser's Origin. Needed whenever the
+    # deployment sits behind a proxy that rewrites the Host header, because the same-origin
+    # check then has nothing to compare the Origin against. Set this to the hostname the app
+    # is actually served from, e.g.:
+    #   SHOPWISE_ALLOWED_ORIGIN_PATTERNS=https://*.example.com,http://localhost:[*]
+    allowed-origin-patterns: ${SHOPWISE_ALLOWED_ORIGIN_PATTERNS:http://localhost:[*],http://127.0.0.1:[*]}
   assistant:
     enabled: ${SHOPWISE_ASSISTANT_ENABLED:true}
     model: ${SHOPWISE_AI_MODEL:gpt-5-mini}

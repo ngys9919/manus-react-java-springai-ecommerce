@@ -2,6 +2,8 @@ package com.shopwise.config;
 
 import com.shopwise.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
@@ -25,6 +27,8 @@ import java.util.Locale;
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
     private final ShopwiseProperties properties;
 
@@ -96,6 +100,7 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         List<String> configured = new ArrayList<>(properties.getSecurity().getAllowedOrigins());
+        List<String> patterns = new ArrayList<>(properties.getSecurity().getAllowedOriginPatterns());
         boolean allowSameOrigin = properties.getSecurity().isAllowSameOrigin();
 
         return request -> {
@@ -105,14 +110,35 @@ public class SecurityConfig {
                 return null;
             }
 
-            if (!configured.contains(origin) && !(allowSameOrigin && isSameOrigin(request, origin))) {
+            // Spring matches a concrete Origin against these itself, including the wildcard
+            // forms such as http://localhost:[*].
+            CorsConfiguration configuration = new CorsConfiguration();
+            configuration.setAllowedOriginPatterns(patterns);
+
+            boolean exact = configured.contains(origin);
+            // checkOrigin returns the matched origin, or null when nothing matches - it does not
+            // return an empty string, so it must be compared against null.
+            boolean byPattern = !patterns.isEmpty() && configuration.checkOrigin(origin) != null;
+            boolean sameOrigin = allowSameOrigin && isSameOrigin(request, origin);
+
+            if (!exact && !byPattern && !sameOrigin) {
                 // An empty configuration allows no origin, which Spring reports as
-                // "Invalid CORS request" with a 403.
+                // "Invalid CORS request" with a 403. Say why in the log: from the browser this
+                // is only ever an opaque status, and it is the deployed hostname - never the dev
+                // server - that trips it.
+                log.warn("Rejected origin {}: not in allowed-origins {}, matched no allowed-origin-pattern {}, "
+                                + "and was not the request's own authority (Host={}, X-Forwarded-Host={}). "
+                                + "Add the deployment's hostname to SHOPWISE_ALLOWED_ORIGINS or "
+                                + "SHOPWISE_ALLOWED_ORIGIN_PATTERNS.",
+                        origin, configured, patterns,
+                        request.getHeader(HttpHeaders.HOST), request.getHeader("X-Forwarded-Host"));
                 return new CorsConfiguration();
             }
 
-            CorsConfiguration configuration = new CorsConfiguration();
-            configuration.setAllowedOrigins(List.of(origin));
+            if (!exact && !byPattern) {
+                // Same origin: echo it back so the browser is satisfied.
+                configuration.setAllowedOrigins(List.of(origin));
+            }
             configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
             configuration.setAllowedHeaders(List.of("*"));
             configuration.setExposedHeaders(List.of("Location", "X-Cart-Token"));

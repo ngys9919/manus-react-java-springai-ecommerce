@@ -18,6 +18,7 @@ import java.math.RoundingMode;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 public class CartService {
@@ -46,22 +47,33 @@ public class CartService {
     @Transactional
     public Cart resolveCart(ActorContext actor) {
         if (actor.authenticated()) {
-            Optional<Cart> existing = cartRepository.findByUserIdAndStatus(actor.userId(), Cart.CartStatus.ACTIVE);
-            if (existing.isPresent()) {
-                return existing.get();
-            }
-            Cart cart = Cart.builder().userId(actor.userId()).status(Cart.CartStatus.ACTIVE).build();
-            return cartRepository.save(cart);
+            return cartRepository.findByUserIdAndStatus(actor.userId(), Cart.CartStatus.ACTIVE)
+                    .orElseGet(() -> {
+                        cartRepository.insertActiveUserCartIfAbsent(UUID.randomUUID(), actor.userId());
+                        return require(cartRepository.findByUserIdAndStatus(actor.userId(), Cart.CartStatus.ACTIVE),
+                                "user " + actor.userId());
+                    });
         }
         if (actor.guestToken() == null) {
             throw ApiException.badRequest(
                     "A guest cart needs an X-Guest-Token header. Send any random string and reuse it.");
         }
-        return cartRepository.findByGuestTokenAndStatus(actor.guestToken(), Cart.CartStatus.ACTIVE)
-                .orElseGet(() -> cartRepository.save(Cart.builder()
-                        .guestToken(actor.guestToken())
-                        .status(Cart.CartStatus.ACTIVE)
-                        .build()));
+        String guestToken = actor.guestToken();
+        return cartRepository.findByGuestTokenAndStatus(guestToken, Cart.CartStatus.ACTIVE)
+                .orElseGet(() -> {
+                    cartRepository.insertActiveGuestCartIfAbsent(UUID.randomUUID(), guestToken);
+                    return require(cartRepository.findByGuestTokenAndStatus(guestToken, Cart.CartStatus.ACTIVE),
+                            "guest token " + guestToken);
+                });
+    }
+
+    /**
+     * The upsert above cannot fail, so the row is there on re-read unless something is badly
+     * wrong. Surface that as a 500 with a readable message rather than an empty Optional.
+     */
+    private Cart require(Optional<Cart> cart, String owner) {
+        return cart.orElseThrow(() -> new IllegalStateException(
+                "Active cart for " + owner + " could not be read back after being created."));
     }
 
     @Transactional
@@ -157,7 +169,13 @@ public class CartService {
             return;
         }
         Cart target = cartRepository.findByUserIdAndStatus(userId, Cart.CartStatus.ACTIVE)
-                .orElseGet(() -> cartRepository.save(Cart.builder().userId(userId).status(Cart.CartStatus.ACTIVE).build()));
+                .orElseGet(() -> {
+                    // Same race as resolveCart: signing in fires the merge and the cart view
+                    // together, so both can try to create the signed-in cart.
+                    cartRepository.insertActiveUserCartIfAbsent(UUID.randomUUID(), userId);
+                    return require(cartRepository.findByUserIdAndStatus(userId, Cart.CartStatus.ACTIVE),
+                            "user " + userId);
+                });
 
         for (CartItem guestItem : new ArrayList<>(guestCart.get().getItems())) {
             CartItem existing = target.getItems().stream()
